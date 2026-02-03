@@ -3,9 +3,13 @@
 # Run PR review analysis - passes all arguments through to gh-analyze
 # 
 # Usage examples:
-#   just gh-analyze -n varun-sundar -p 2025H2            # Slugified name (no quotes needed!)
-#   just gh-analyze -n "Varun Sundar" -p 2025H2         # Full name (quotes needed for spaces)
+#   just gh-analyze -n varun-sundar -p 2025H2            # RECOMMENDED: Slugified name (no quotes needed!)
+#   just gh-analyze -n ariel-ledesma -p 2025H2           # RECOMMENDED: Slugified name
+#   just gh-analyze -n "Varun Sundar" -p 2025H2         # Alternative: Full name (quotes needed for spaces)
 #   just gh-analyze -u varunsundar -p 2025H2             # Use -u for GitHub usernames
+# 
+# IMPORTANT: Always use slugified names (e.g., varun-sundar) instead of full names.
+#            The tool automatically converts them to title case for matching.
 gh-analyze *args:
     #!/usr/bin/env bash
     set -e

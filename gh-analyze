@@ -11,21 +11,26 @@ Usage:
     gh-analyze -u <username> -p <period> [options]
 
 Examples:
-    # Using name and period (recommended) - slugified names work too!
-    gh-analyze -n "Ariel Ledesma" -p 2025H2
-    gh-analyze -n ariel-ledesma -p 2025H2          # Slugified name (no quotes needed!)
-    gh-analyze -n "Erin Friesen" -p 2025H2 --org EvolutionIQ
+    # Using slugified name and period (RECOMMENDED - no quotes needed!)
+    gh-analyze -n varun-sundar -p 2025H2
+    gh-analyze -n ariel-ledesma -p 2025H2
+    gh-analyze -n erin-friesen -p 2025H2 --org EvolutionIQ
+    
+    # Alternative: Using full name (requires quotes for spaces)
+    gh-analyze -n "Varun Sundar" -p 2025H2
     
     # Using username and dates
-    gh-analyze -u efriesen -s 2025-07-01 -e 2025-12-31
+    gh-analyze -u varunsundar -s 2025-07-01 -e 2025-12-31
     gh-analyze -u ariel-ledesma-eiq -s 2025-07-01 -e 2025-12-31
     
-    # Mixed: name with dates, or username with period
-    gh-analyze -n ariel-ledesma -s 2025-07-01 -e 2025-12-31
-    gh-analyze -u efriesen -p 2025H2
+    # Mixed: slugified name with dates, or username with period
+    gh-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
+    gh-analyze -u varunsundar -p 2025H2
 
 Options:
-    -n, --name NAME       Person's name (e.g., "Ariel Ledesma" or "ariel-ledesma")
+    -n, --name NAME       Person's name in slugified format (e.g., varun-sundar). 
+                          Full names with spaces (e.g., "Varun Sundar") are also 
+                          supported but require quotes. Slugified format is recommended.
     -u, --username USERNAME   GitHub username
     -p, --period PERIOD   Period key (e.g., "2025H2")
     -s, --start DATE      Start date (YYYY-MM-DD)
@@ -232,7 +237,11 @@ def main():
     )
     
     # Name/username options (mutually complementary)
-    parser.add_argument("-n", "--name", help="Person's name (e.g., 'Ariel Ledesma')")
+    parser.add_argument(
+        "-n",
+        "--name",
+        help="Person's name in slugified format (e.g., 'varun-sundar'). Full names with spaces are also supported but require quotes.",
+    )
     parser.add_argument("-u", "--username", help="GitHub username")
     
     # Period/dates options (mutually complementary)

@@ -19,15 +19,18 @@ This will:
 ### Run Analysis
 
 ```bash
-# Using slugified name (recommended - no quotes needed!)
+# Using slugified name (RECOMMENDED - no quotes needed!)
 just gh-analyze -n varun-sundar -p 2025H2
+just gh-analyze -n ariel-ledesma -p 2025H2
 
-# Using full name
+# Alternative: Using full name (requires quotes for spaces)
 just gh-analyze -n "Varun Sundar" -p 2025H2
 
 # Using username
 just gh-analyze -u varunsundar -p 2025H2
 ```
+
+**Note**: Use slugified names (e.g., `varun-sundar`) instead of full names. The tool automatically converts them to title case for matching.
 
 See the main [README.md](../README.md) for full documentation.
 

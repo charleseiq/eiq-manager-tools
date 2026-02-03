@@ -17,10 +17,10 @@ just auth
 ### Run Analysis
 
 ```bash
-# Using slugified name (recommended - no quotes needed!)
+# Using slugified name (RECOMMENDED - no quotes needed!)
 just gh-analyze -n varun-sundar -p 2025H2
 
-# Using full name (quotes needed for spaces)
+# Alternative: Using full name (requires quotes for spaces)
 just gh-analyze -n "Varun Sundar" -p 2025H2
 
 # Using username
@@ -30,12 +30,14 @@ just gh-analyze -u varunsundar -p 2025H2
 just gh-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
 ```
 
+**Important**: Use slugified names (e.g., `varun-sundar`) instead of full names. This avoids quote issues and is the recommended approach.
+
 ## Features
 
 - **Comprehensive Analysis**: Analyzes PR reviews, comments, and authored PRs
 - **AI-Powered Insights**: Uses Vertex AI (gemini-2.5-pro) for intelligent analysis
 - **Standardized Reports**: Generates consistent markdown reports with metrics
-- **Flexible Input**: Supports names (slugified or full), usernames, periods, or custom dates
+- **Flexible Input**: Supports slugified names (recommended), full names, usernames, periods, or custom dates
 - **Centralized Config**: Manage multiple users and periods in a single `config.json`
 
 ## Usage
@@ -51,7 +53,7 @@ gh-analyze -u <username> -p <period> [options]
 
 ### Arguments
 
-- `-n, --name NAME` - Person's name (e.g., `"Varun Sundar"` or `varun-sundar`)
+- `-n, --name NAME` - Person's name in slugified format (e.g., `varun-sundar`). Full names with spaces (e.g., `"Varun Sundar"`) are also supported but require quotes.
 - `-u, --username USERNAME` - GitHub username
 - `-p, --period PERIOD` - Period key (e.g., `2025H2`)
 - `-s, --start DATE` - Start date (YYYY-MM-DD)
@@ -68,9 +70,12 @@ gh-analyze -u <username> -p <period> [options]
 ### Examples
 
 ```bash
-# Using name and period (recommended)
+# Using slugified name and period (RECOMMENDED)
 gh-analyze -n varun-sundar -p 2025H2
-gh-analyze -n "Ariel Ledesma" -p 2025H2
+gh-analyze -n ariel-ledesma -p 2025H2
+
+# Alternative: Using full name (requires quotes)
+gh-analyze -n "Varun Sundar" -p 2025H2
 
 # Using username and dates
 gh-analyze -u varunsundar -s 2025-07-01 -e 2025-12-31
