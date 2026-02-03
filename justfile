@@ -1,0 +1,148 @@
+# Justfile for common tasks
+
+# Run PR review analysis - passes all arguments through to gh-analyze
+# 
+# Usage examples:
+#   just gh-analyze -n varun-sundar -p 2025H2            # Slugified name (no quotes needed!)
+#   just gh-analyze -n "Varun Sundar" -p 2025H2         # Full name (quotes needed for spaces)
+#   just gh-analyze -u varunsundar -p 2025H2             # Use -u for GitHub usernames
+gh-analyze *args:
+    #!/usr/bin/env bash
+    set -e
+    # Use uv run to ensure dependencies are available
+    uv run ./gh-analyze {{args}}
+
+# Authenticate with Google Cloud for Vertex AI access
+auth:
+    @echo "🔐 Setting up Google Cloud authentication..."
+    @echo ""
+    @if ! command -v gcloud > /dev/null 2>&1; then \
+        echo "❌ gcloud CLI not found"; \
+        echo "   Install from: https://cloud.google.com/sdk/docs/install"; \
+        exit 1; \
+    fi
+    @echo "✓ gcloud CLI found"
+    @echo ""
+    @echo "Running: gcloud auth application-default login"
+    @echo "This will open a browser for authentication..."
+    @gcloud auth application-default login
+    @echo ""
+    @echo "✓ Authentication complete!"
+    @echo ""
+    @echo "Verifying authentication..."
+    @if gcloud auth application-default print-access-token > /dev/null 2>&1; then \
+        echo "✓ Application Default Credentials are set"; \
+    else \
+        echo "⚠️  Warning: Could not verify credentials"; \
+    fi
+    @echo ""
+    @if [ -z "$$GOOGLE_CLOUD_PROJECT" ]; then \
+        echo "⚠️  GOOGLE_CLOUD_PROJECT not set"; \
+        echo "   Set it with: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
+    else \
+        echo "✓ GOOGLE_CLOUD_PROJECT is set: $$GOOGLE_CLOUD_PROJECT"; \
+        echo ""; \
+        echo "Checking if Vertex AI API is enabled..."; \
+        if gcloud services list --enabled --filter="name:aiplatform.googleapis.com" --format="value(name)" | grep -q aiplatform; then \
+            echo "✓ Vertex AI API is enabled"; \
+        else \
+            echo "⚠️  Vertex AI API may not be enabled"; \
+            echo "   Enable it with: gcloud services enable aiplatform.googleapis.com"; \
+        fi; \
+    fi
+    @echo ""
+    @echo "Authentication setup complete!"
+
+# Setup: Install dependencies and verify configuration
+setup:
+    @echo "Setting up GitHub PR Review Analysis..."
+    @echo ""
+    @echo "1. Installing dependencies (including test dependencies)..."
+    @uv sync --extra dev || echo "⚠️  uv sync failed - you may need to install dependencies manually"
+    @echo ""
+    @echo "2. Setting up .env file..."
+    @if [ -f ".env" ]; then \
+        echo "✓ .env file already exists"; \
+    else \
+        if [ -f ".env.example" ]; then \
+            cp .env.example .env; \
+            echo "✓ Created .env from .env.example"; \
+            echo "   ⚠️  Please edit .env and fill in your values:"; \
+            echo "      - GITHUB_TOKEN"; \
+            echo "      - GOOGLE_CLOUD_PROJECT"; \
+        else \
+            echo "⚠️  .env.example not found"; \
+        fi; \
+    fi
+    @echo ""
+    @echo "3. Checking environment variables..."
+    @if [ -z "$$GITHUB_TOKEN" ]; then \
+        echo "⚠️  GITHUB_TOKEN not set"; \
+        echo "   Get token from: https://github.com/settings/tokens"; \
+        echo "   Required scopes: public_repo or repo"; \
+        echo "   Add to .env file or export: export GITHUB_TOKEN=your_token"; \
+    else \
+        echo "✓ GITHUB_TOKEN is set"; \
+    fi
+    @if [ -z "$$GOOGLE_CLOUD_PROJECT" ]; then \
+        echo "⚠️  GOOGLE_CLOUD_PROJECT not set"; \
+        echo "   Set your Google Cloud project ID"; \
+        echo "   Add to .env file or export: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
+    else \
+        echo "✓ GOOGLE_CLOUD_PROJECT is set: $$GOOGLE_CLOUD_PROJECT"; \
+    fi
+    @if [ -z "$$GOOGLE_CLOUD_LOCATION" ]; then \
+        echo "ℹ️  GOOGLE_CLOUD_LOCATION not set (will default to us-east4)"; \
+    else \
+        echo "✓ GOOGLE_CLOUD_LOCATION is set: $$GOOGLE_CLOUD_LOCATION"; \
+    fi
+    @echo ""
+    @echo "4. Checking template file..."
+    @if [ -f "pr-review-analysis/templates/gh-analysis.jinja2.md" ]; then \
+        echo "✓ Template file exists"; \
+    else \
+        echo "❌ Template file not found"; \
+    fi
+    @echo ""
+    @echo "5. Checking centralized config..."
+    @if [ -f "config.json" ]; then \
+        echo "✓ config.json exists"; \
+    else \
+        echo "⚠️  config.json not found (will be created automatically)"; \
+    fi
+    @echo ""
+    @echo "6. Checking Google Cloud authentication..."
+    @if command -v gcloud > /dev/null 2>&1; then \
+        if gcloud auth application-default print-access-token > /dev/null 2>&1; then \
+            echo "✓ Google Cloud authentication is set up"; \
+        else \
+            echo "⚠️  Google Cloud authentication not set up"; \
+            echo "   Run: just auth"; \
+        fi; \
+    else \
+        echo "⚠️  gcloud CLI not found"; \
+        echo "   Install from: https://cloud.google.com/sdk/docs/install"; \
+        echo "   Then run: just auth"; \
+    fi
+    @echo ""
+    @echo "Setup complete!"
+    @echo ""
+    @echo "Next steps:"
+    @echo "  1. If not authenticated: just auth"
+    @echo "  2. Run analysis: just gh-analyze <username> --start <date> --end <date>"
+    @echo "  3. Run tests: just test"
+    @echo "  4. Format code: just format"
+
+# Run tests
+test:
+    @echo "🧪 Running tests..."
+    @uv run pytest
+
+# Format code with ruff
+format:
+    @echo "✨ Formatting code with ruff..."
+    @uv run ruff format .
+    @uv run ruff check --fix .
+
+# Note: validate.py and fetch scripts have been removed
+# Use gh-analyze for all analysis tasks

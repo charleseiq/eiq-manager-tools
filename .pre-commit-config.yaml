@@ -1,0 +1,46 @@
+default_install_hook_types:
+  - pre-commit
+  - post-checkout
+  - post-merge
+  - post-rewrite
+repos:
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    # uv version.
+    rev: 0.9.26
+    hooks:
+      - id: uv-sync
+        additional_dependencies: [keyring]
+        args: ["--locked", "--all-packages"]
+  
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.15
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+  
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-requests, types-pyyaml]
+        args: [--ignore-missing-imports]
+        exclude: ^(tests/|\.venv/)
+  
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: false
+      
+      - id: convert-pdfs-to-markdown
+        name: Convert PDFs to Markdown
+        entry: bash -c 'for pdf in "$@"; do markitdown "$pdf" > "${pdf%.pdf}.md" && git add "${pdf%.pdf}.md"; done' --
+        language: system
+        types: [file]
+        files: \.pdf$
+        pass_filenames: true

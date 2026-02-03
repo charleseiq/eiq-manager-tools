@@ -1,0 +1,35 @@
+{
+  "organization": "EvolutionIQ",
+  "periods": {
+    "2025H2": {
+      "start_date": "2025-07-01",
+      "end_date": "2025-12-31"
+    },
+    "2025H1": {
+      "start_date": "2025-01-01",
+      "end_date": "2025-06-30"
+    }
+  },
+  "users": [
+    {
+      "username": "ariel-ledesma-eiq",
+      "name": "Ariel Ledesma"
+    },
+    {
+      "username": "ey-evolution",
+      "name": "Edward Yang"
+    },
+    {
+      "username": "efriesen",
+      "name": "Erin Friesen"
+    },
+    {
+      "username": "raghueiq",
+      "name": "Raghuveer Sunkara"
+    },
+    {
+      "username": "sundarvarun",
+      "name": "Varun Sundar"
+    }
+  ]
+}
