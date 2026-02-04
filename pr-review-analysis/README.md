@@ -19,9 +19,11 @@ This will:
 ### Run Analysis
 
 ```bash
-# Using slugified name (RECOMMENDED - no quotes needed!)
-just gh-analyze -n varun-sundar -p 2025H2
-just gh-analyze -n ariel-ledesma -p 2025H2
+# Using slugified name with period (RECOMMENDED - no quotes needed!)
+just gh-analyze -n varun-sundar -p 2025H2          # Second half of 2025
+just gh-analyze -n ariel-ledesma -p 2025H1         # First half of 2025
+just gh-analyze -n erin-friesen -p 2026Q1          # First quarter of 2026
+just gh-analyze -n varun-sundar -p 2025            # Full year 2025
 
 # Alternative: Using full name (requires quotes for spaces)
 just gh-analyze -n "Varun Sundar" -p 2025H2
@@ -30,7 +32,9 @@ just gh-analyze -n "Varun Sundar" -p 2025H2
 just gh-analyze -u varunsundar -p 2025H2
 ```
 
-**Note**: Use slugified names (e.g., `varun-sundar`) instead of full names. The tool automatically converts them to title case for matching.
+**Note**: 
+- Use slugified names (e.g., `varun-sundar`) instead of full names. The tool automatically converts them to title case for matching.
+- Periods are parsed directly: `YYYYH1`, `YYYYH2`, `YYYYQ1-Q4`, or `YYYY` (e.g., `2025H2`, `2026Q1`, `2025`).
 
 See the main [README.md](../README.md) for full documentation.
 
@@ -52,7 +56,9 @@ pr-review-analysis/
 
 ```bash
 # Using slugified name with period (recommended)
-gh-analyze -n varun-sundar -p 2025H2
+gh-analyze -n varun-sundar -p 2025H2          # Second half of 2025
+gh-analyze -n ariel-ledesma -p 2026Q1         # First quarter of 2026
+gh-analyze -n varun-sundar -p 2025            # Full year 2025
 
 # Using username with dates
 gh-analyze -u varunsundar -s 2025-07-01 -e 2025-12-31

@@ -10,6 +10,7 @@ This workflow:
 
 import json
 import os
+import re
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,15 +95,82 @@ class AnalysisState(TypedDict):
     error: Optional[str]
 
 
+def _parse_period(period_str: str) -> Tuple[str, str]:
+    """
+    Parse period string to start and end dates.
+    
+    Supports:
+    - H1/H2: Half-year (e.g., '2025H1' = Jan 1 - Jun 30, '2025H2' = Jul 1 - Dec 31)
+    - Q1-Q4: Quarter (e.g., '2025Q1' = Jan 1 - Mar 31, '2025Q2' = Apr 1 - Jun 30)
+    - Year: Full year (e.g., '2025' = Jan 1 - Dec 31)
+    
+    Returns:
+        Tuple of (start_date, end_date) in YYYY-MM-DD format
+    """
+    period_str = period_str.strip().upper()
+    
+    # Half-year pattern: YYYYH1 or YYYYH2
+    half_match = re.match(r"^(\d{4})H([12])$", period_str)
+    if half_match:
+        year = int(half_match.group(1))
+        half = half_match.group(2)
+        if half == "1":
+            return (f"{year}-01-01", f"{year}-06-30")
+        else:  # H2
+            return (f"{year}-07-01", f"{year}-12-31")
+    
+    # Quarter pattern: YYYYQ1, YYYYQ2, YYYYQ3, YYYYQ4
+    quarter_match = re.match(r"^(\d{4})Q([1-4])$", period_str)
+    if quarter_match:
+        year = int(quarter_match.group(1))
+        quarter = int(quarter_match.group(2))
+        if quarter == 1:
+            return (f"{year}-01-01", f"{year}-03-31")
+        elif quarter == 2:
+            return (f"{year}-04-01", f"{year}-06-30")
+        elif quarter == 3:
+            return (f"{year}-07-01", f"{year}-09-30")
+        else:  # Q4
+            return (f"{year}-10-01", f"{year}-12-31")
+    
+    # Full year pattern: YYYY
+    year_match = re.match(r"^(\d{4})$", period_str)
+    if year_match:
+        year = int(year_match.group(1))
+        return (f"{year}-01-01", f"{year}-12-31")
+    
+    raise ValueError(
+        f"Invalid period format: {period_str}. "
+        "Use format: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., '2025H2', '2026Q1', '2025')"
+    )
+
+
 def _format_analysis_period(start_date: str, end_date: str) -> str:
     """Generate analysis_period string from dates."""
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
     
-    if start_dt.month == 7 and start_dt.day == 1 and end_dt.month == 12 and end_dt.day == 31:
+    # Full year
+    if start_dt.month == 1 and start_dt.day == 1 and end_dt.month == 12 and end_dt.day == 31:
+        return f"{start_dt.year} (January 1 - December 31, {start_dt.year})"
+    # H2
+    elif start_dt.month == 7 and start_dt.day == 1 and end_dt.month == 12 and end_dt.day == 31:
         return f"{start_dt.year}H2 (July 1 - December 31, {start_dt.year})"
+    # H1
     elif start_dt.month == 1 and start_dt.day == 1 and end_dt.month == 6 and end_dt.day == 30:
         return f"{start_dt.year}H1 (January 1 - June 30, {start_dt.year})"
+    # Q1
+    elif start_dt.month == 1 and start_dt.day == 1 and end_dt.month == 3 and end_dt.day == 31:
+        return f"{start_dt.year}Q1 (January 1 - March 31, {start_dt.year})"
+    # Q2
+    elif start_dt.month == 4 and start_dt.day == 1 and end_dt.month == 6 and end_dt.day == 30:
+        return f"{start_dt.year}Q2 (April 1 - June 30, {start_dt.year})"
+    # Q3
+    elif start_dt.month == 7 and start_dt.day == 1 and end_dt.month == 9 and end_dt.day == 30:
+        return f"{start_dt.year}Q3 (July 1 - September 30, {start_dt.year})"
+    # Q4
+    elif start_dt.month == 10 and start_dt.day == 1 and end_dt.month == 12 and end_dt.day == 31:
+        return f"{start_dt.year}Q4 (October 1 - December 31, {start_dt.year})"
     else:
         return f"{start_date} to {end_date}"
 
@@ -325,13 +393,14 @@ def load_config(state: AnalysisState) -> AnalysisState:  # type: ignore[return]
         # Resolve period reference from state (passed from CLI)
         if "period" in state:
             period_key = state["period"]
-            periods = centralized_config.get("periods", {})
-            if period_key not in periods:
-                state["error"] = f"Period '{period_key}' not found in periods config"
+            try:
+                # Parse period string directly (e.g., 2025H2, 2026Q1, 2025)
+                start_date, end_date = _parse_period(period_key)
+                config["start_date"] = start_date
+                config["end_date"] = end_date
+            except ValueError as e:
+                state["error"] = str(e)
                 return state
-            period_config = periods[period_key]
-            # Merge period config into config
-            config = {**config, **period_config}
     else:
         # Load individual config file
         if not config_path.exists():

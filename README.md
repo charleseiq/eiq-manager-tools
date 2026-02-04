@@ -55,7 +55,7 @@ gh-analyze -u <username> -p <period> [options]
 
 - `-n, --name NAME` - Person's name in slugified format (e.g., `varun-sundar`). Full names with spaces (e.g., `"Varun Sundar"`) are also supported but require quotes.
 - `-u, --username USERNAME` - GitHub username
-- `-p, --period PERIOD` - Period key (e.g., `2025H2`)
+- `-p, --period PERIOD` - Period string: `YYYYH1`, `YYYYH2`, `YYYYQ1-Q4`, or `YYYY` (e.g., `2025H2`, `2026Q1`, `2025`)
 - `-s, --start DATE` - Start date (YYYY-MM-DD)
 - `-e, --end DATE` - End date (YYYY-MM-DD)
 
@@ -71,8 +71,10 @@ gh-analyze -u <username> -p <period> [options]
 
 ```bash
 # Using slugified name and period (RECOMMENDED)
-gh-analyze -n varun-sundar -p 2025H2
-gh-analyze -n ariel-ledesma -p 2025H2
+gh-analyze -n varun-sundar -p 2025H2          # Second half of 2025
+gh-analyze -n ariel-ledesma -p 2025H1        # First half of 2025
+gh-analyze -n erin-friesen -p 2026Q1         # First quarter of 2026
+gh-analyze -n varun-sundar -p 2025           # Full year 2025
 
 # Alternative: Using full name (requires quotes)
 gh-analyze -n "Varun Sundar" -p 2025H2
@@ -96,12 +98,6 @@ The tool supports a centralized configuration file at the repository root:
 ```json
 {
   "organization": "EvolutionIQ",
-  "periods": {
-    "2025H2": {
-      "start_date": "2025-07-01",
-      "end_date": "2025-12-31"
-    }
-  },
   "users": [
     {
       "username": "varunsundar",
@@ -111,7 +107,16 @@ The tool supports a centralized configuration file at the repository root:
 }
 ```
 
-When using centralized config, you can reference users by name (slugified or full) and periods by key.
+**Period Format**: Periods are parsed directly from the `-p` flag. Supported formats:
+- `YYYYH1` - First half (Jan 1 - Jun 30)
+- `YYYYH2` - Second half (Jul 1 - Dec 31)
+- `YYYYQ1` - First quarter (Jan 1 - Mar 31)
+- `YYYYQ2` - Second quarter (Apr 1 - Jun 30)
+- `YYYYQ3` - Third quarter (Jul 1 - Sep 30)
+- `YYYYQ4` - Fourth quarter (Oct 1 - Dec 31)
+- `YYYY` - Full year (Jan 1 - Dec 31)
+
+When using centralized config, you can reference users by slugified name (recommended) or full name.
 
 ### Individual Config Files
 
