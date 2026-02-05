@@ -1,110 +1,178 @@
 # JIRA Sprint & Epic Analysis
 
-A LangGraph-based workflow for analyzing JIRA sprint performance, velocity, and epic allocation.
-
-## Overview
-
-This module analyzes JIRA data to provide insights into:
-- **Sprint Board Management**: Loading before sprint start and completion rates
-- **Velocity Analysis**: Trends and consistency in sprint velocity
-- **Epic Allocation**: Time distribution across epics for time sheet and capex reporting
-- **Worklog Patterns**: Time tracking behavior and patterns
+Analyzes JIRA sprint performance, velocity trends, and epic allocation using LangGraph workflows and Vertex AI. Designed for sprint planning, velocity tracking, and time allocation reporting.
 
 ## Quick Start
 
+```bash
+# Using slugified name with period (recommended)
+scripts/jira-analyze -n varun-sundar -p 2025H2
+
+# Or using just
+just jira-analyze -n varun-sundar -p 2025H2
+```
+
+## Features
+
+- **Sprint Board Management**: Analyzes sprint loading and completion rates
+- **Velocity Analysis**: Tracks velocity trends and consistency
+- **Epic Allocation**: Time distribution across epics for time sheets and capex reporting
+- **Worklog Patterns**: Analyzes time tracking behavior
+- **Accomplishments Summary**: Generates human-readable accomplishments from completed issues
+
+## Setup
+
 ### Prerequisites
 
-1. JIRA API token (get from https://id.atlassian.com/manage-profile/security/api-tokens)
+1. JIRA API token (from https://id.atlassian.com/manage-profile/security/api-tokens)
 2. JIRA email address
 3. JIRA instance URL
 4. Google Cloud project with Vertex AI enabled
 
-### Setup
-
-1. Add JIRA credentials to `.env`:
-   ```bash
-   JIRA_TOKEN=your_jira_api_token
-   JIRA_EMAIL=your_email@example.com
-   JIRA_URL=https://yourcompany.atlassian.net
-   ```
-
-2. Run analysis:
-   ```bash
-   # Using slugified name with period (RECOMMENDED)
-   just jira-analyze -n varun-sundar -p 2025H2
-   
-   # Using username
-   just jira-analyze -u varunsundar -p 2025H2
-   ```
-
-## Usage
-
-### Command Line
+### Environment Variables
 
 ```bash
-# Using slugified name with period (RECOMMENDED - no quotes needed!)
-jira-analyze -n varun-sundar -p 2025H2          # Second half of 2025
-jira-analyze -n ariel-ledesma -p 2025H1         # First half of 2025
-jira-analyze -n erin-friesen -p 2026Q1          # First quarter of 2026
-jira-analyze -n varun-sundar -p 2025            # Full year 2025
-
-# Alternative: Using full name (requires quotes for spaces)
-jira-analyze -n "Varun Sundar" -p 2025H2
-
-# Using username with dates
-jira-analyze -u varunsundar -s 2025-07-01 -e 2025-12-31
+JIRA_TOKEN=your_jira_api_token_here
+JIRA_EMAIL=your_email@example.com
+JIRA_URL=https://yourcompany.atlassian.net
+JIRA_PROJECT=WC
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_LOCATION=us-east4
 ```
 
-### Period Formats
+**Important:** `JIRA_URL` and `JIRA_PROJECT` must be set in `.env` file, not in `config.json`.
 
-- `YYYYH1` - First half (Jan 1 - Jun 30)
-- `YYYYH2` - Second half (Jul 1 - Dec 31)
-- `YYYYQ1` - First quarter (Jan 1 - Mar 31)
-- `YYYYQ2` - Second quarter (Apr 1 - Jun 30)
-- `YYYYQ3` - Third quarter (Jul 1 - Sep 30)
-- `YYYYQ4` - Fourth quarter (Oct 1 - Dec 31)
-- `YYYY` - Full year (Jan 1 - Dec 31)
+### Configuration
 
-## Configuration
-
-### Centralized Config (`config.json`)
+Add users to `config.json`:
 
 ```json
 {
   "users": [
     {
       "username": "varunsundar",
-      "account_id": "5d1234567890abcdef",
-      "name": "Varun Sundar"
+      "email": "varun.sundar@evolutioniq.com",
+      "name": "Varun Sundar",
+      "account_id": "712020:9b24a504-5186-4db2-a263-2f66398ba887"
     }
   ]
 }
 ```
 
-**Important Notes:**
-- `jira_url` is NOT in config.json - it must be set in `.env` file as `JIRA_URL`
-- Periods are parsed directly from the `-p` flag. No need to define them in config!
+**Note:** The `email` field is used for JIRA assignee queries. Use the same email as your JIRA account.
+
+## Usage
+
+### Basic Commands
+
+```bash
+# Using slugified name (recommended - no quotes needed)
+scripts/jira-analyze -n varun-sundar -p 2025H2
+
+# Using full name (requires quotes)
+scripts/jira-analyze -n "Varun Sundar" -p 2025H2
+
+# Using email/username
+scripts/jira-analyze -u varun.sundar@evolutioniq.com -p 2025H2
+
+# Custom date range
+scripts/jira-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
+```
+
+### Options
+
+- `-n, --name NAME` - Person's name (slugified format recommended)
+- `-u, --username USERNAME` - JIRA username/email/account_id
+- `-p, --period PERIOD` - Period string (YYYYH1, YYYYH2, YYYYQ1-Q4, YYYY)
+- `-s, --start DATE` - Start date (YYYY-MM-DD)
+- `-e, --end DATE` - End date (YYYY-MM-DD)
+- `--jira-url URL` - JIRA instance URL (or set JIRA_URL env var)
+- `--jira-project PROJECT` - JIRA project key (or set JIRA_PROJECT env var)
+- `-o, --output DIR` - Output directory
+- `--jira-token TOKEN` - JIRA API token (or set JIRA_TOKEN env var)
+- `--jira-email EMAIL` - JIRA email (or set JIRA_EMAIL env var)
+- `--project PROJECT` - Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)
 
 ## Output
 
 Reports are saved to `reports/<slugified-name>/<period>/jira-analysis.md` and include:
 
-1. **Executive Summary** - Key metrics at a glance
-2. **Sprint Board Management** - Loading and completion analysis
-3. **Velocity Analysis** - Trends and consistency
-4. **Epic Allocation & Time Tracking** - Day allocation for time sheets/capex
-5. **Sprint Planning Quality** - Planning accuracy metrics
-6. **Worklog Patterns** - Time logging behavior
-7. **Recommendations** - Actionable insights
+- Executive summary with key metrics
+- Sprint loading and completion analysis
+- Velocity trends and consistency metrics
+- Epic allocation summary (for time sheets/capex)
+- Sprint planning quality assessment
+- Worklog pattern analysis
+- Accomplishments summary
+- Detailed sprint and epic breakdowns
+- Recommendations
 
 ## Architecture
 
-- **LangGraph Workflow**: Orchestrates data fetching, analysis, and report generation
-- **JIRA REST API**: Fetches sprints, issues, worklogs, and epics
-- **Vertex AI**: Generates comprehensive analysis using Gemini 2.5 Pro
-- **Jinja2 Templates**: Standardized report format
+The analysis uses a LangGraph workflow:
+
+```
+load_config → fetch_jira → analyze → accomplishments → generate → save → END
+```
+
+- **load_config**: Loads user configuration and resolves period dates
+- **fetch_jira**: Queries JIRA API for sprints, issues, worklogs, and epics
+- **analyze**: Uses Vertex AI to analyze sprint metrics and epic allocation
+- **accomplishments**: Generates human-readable accomplishments summary
+- **generate**: Formats analysis into markdown report
+- **save**: Writes report to file system
+
+### Implementation
+
+- **Workflow**: `workflows/analyze.py` - LangGraph state machine
+- **Templates**: `templates/` - Jinja2 report templates
+- **API**: JIRA REST API v3
+- **AI**: Google Cloud Vertex AI (gemini-2.5-pro)
+
+## Key Metrics
+
+### Sprint Metrics
+- Completion rate per sprint
+- Velocity (story points completed)
+- Sprint loading (issues assigned)
+- Epic allocation percentages
+
+### Epic Allocation
+- Time spent per epic
+- Story point distribution
+- Percentage allocation for reporting
+
+### Quality Metrics
+- Issues with acceptance criteria
+- Issues with references/definitions
+- Planning ticket rate (TDDs, design docs)
+
+## Troubleshooting
+
+### "JIRA token required"
+```bash
+export JIRA_TOKEN=your_token_here
+export JIRA_EMAIL=your_email@example.com
+export JIRA_URL=https://yourcompany.atlassian.net
+export JIRA_PROJECT=WC
+```
+
+### "Unbounded JQL queries"
+- Ensure `JIRA_PROJECT` is set in environment variables
+- The project filter is required to prevent unbounded queries
+
+### "No issues found"
+- Verify email/username matches JIRA assignee field exactly
+- Check date range includes issue creation or update dates
+- Ensure project key is correct
+
+### "User not found in centralized config"
+- Verify user exists in `config.json`
+- Check username/email spelling matches exactly
+- Try using slugified name format
 
 ## See Also
 
-- [Main README](../README.md) - Overall project documentation
-- [GitHub Analysis](../gh-analysis/README.md) - Similar analysis for GitHub PRs
+- [Main README](../../README.md) - Overall project documentation
+- [GitHub Analysis](../gh-analysis/README.md) - PR review analysis
+- [Google Docs Analysis](../gdocs-analysis/README.md) - Technical design document analysis

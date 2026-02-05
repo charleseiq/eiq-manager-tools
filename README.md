@@ -1,113 +1,150 @@
-# GitHub PR Review Analysis
+# Engineering Performance Analysis Tools
 
-A comprehensive CLI tool for analyzing GitHub PR review contributions using LangGraph workflows and Google Cloud Vertex AI.
+A comprehensive suite of CLI tools for analyzing engineering performance across GitHub PR reviews, JIRA sprint/epic tracking, and Google Docs technical design documents. Built with LangGraph workflows and Google Cloud Vertex AI.
+
+## Overview
+
+This repository provides three complementary analysis tools:
+
+1. **[GitHub PR Review Analysis](eiq/gh-analysis/README.md)** (`gh-analyze`) - Analyzes code review quality, comment classification, and cross-boundary contributions
+2. **[JIRA Sprint & Epic Analysis](eiq/jira-analysis/README.md)** (`jira-analyze`) - Tracks sprint performance, velocity, epic allocation, and worklog patterns
+3. **[Google Docs Analysis](eiq/gdocs-analysis/README.md)** (`gdocs-analyze`) - Evaluates technical design document quality, comment responses, and team engagement
+
+Together, these tools provide a comprehensive view of engineering performance across code review, planning, and documentation.
 
 ## Quick Start
 
-### Setup
+### Prerequisites
+
+- Python 3.12+
+- [uv](https://github.com/astral-sh/uv) package manager
+- Google Cloud project with Vertex AI enabled
+- API credentials (GitHub token, JIRA token, Google Drive OAuth)
+
+### Installation
 
 ```bash
-# Install dependencies and verify configuration
-just setup
+# Clone the repository
+git clone <repository-url>
+cd management
 
-# Authenticate with Google Cloud (if not already done)
-just auth
+# Install dependencies
+uv sync
+
+# Set up environment variables (copy from .env.example)
+cp .env.example .env
+# Edit .env with your credentials
 ```
 
-### Run Analysis
+### Environment Variables
+
+Create a `.env` file with:
 
 ```bash
-# Using slugified name (RECOMMENDED - no quotes needed!)
-just gh-analyze -n varun-sundar -p 2025H2
+# GitHub (for gh-analyze)
+GITHUB_TOKEN=your_github_token_here
 
-# Alternative: Using full name (requires quotes for spaces)
-just gh-analyze -n "Varun Sundar" -p 2025H2
+# JIRA (for jira-analyze)
+JIRA_TOKEN=your_jira_api_token_here
+JIRA_EMAIL=your_email@example.com
+JIRA_URL=https://yourcompany.atlassian.net
+JIRA_PROJECT=WC
 
-# Using username
-just gh-analyze -u varunsundar -p 2025H2
-
-# Using custom dates
-just gh-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
+# Google Cloud (for all tools)
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_LOCATION=us-east4
 ```
 
-**Important**: Use slugified names (e.g., `varun-sundar`) instead of full names. This avoids quote issues and is the recommended approach.
+### Configuration
 
-## Features
-
-- **Comprehensive Analysis**: Analyzes PR reviews, comments, and authored PRs
-- **AI-Powered Insights**: Uses Vertex AI (gemini-2.5-pro) for intelligent analysis
-- **Standardized Reports**: Generates consistent markdown reports with metrics
-- **Flexible Input**: Supports slugified names (recommended), full names, usernames, periods, or custom dates
-- **Centralized Config**: Manage multiple users and periods in a single `config.json`
-
-## Usage
-
-### Command-Line Interface
-
-```bash
-gh-analyze -n <name> -p <period> [options]
-gh-analyze -u <username> -s <start-date> -e <end-date> [options]
-gh-analyze -n <name> -s <start-date> -e <end-date> [options]
-gh-analyze -u <username> -p <period> [options]
-```
-
-### Arguments
-
-- `-n, --name NAME` - Person's name in slugified format (e.g., `varun-sundar`). Full names with spaces (e.g., `"Varun Sundar"`) are also supported but require quotes.
-- `-u, --username USERNAME` - GitHub username
-- `-p, --period PERIOD` - Period string: `YYYYH1`, `YYYYH2`, `YYYYQ1-Q4`, or `YYYY` (e.g., `2025H2`, `2026Q1`, `2025`)
-- `-s, --start DATE` - Start date (YYYY-MM-DD)
-- `-e, --end DATE` - End date (YYYY-MM-DD)
-
-### Options
-
-- `--org ORG` - Organization name (default: `EvolutionIQ`)
-- `-o, --output DIR` - Output directory (default: `reports/<slugified-name>/<period>`)
-- `--github-token TOKEN` - GitHub API token (or set `GITHUB_TOKEN` env var)
-- `--project PROJECT` - Google Cloud project (or set `GOOGLE_CLOUD_PROJECT` env var)
-- `--location LOCATION` - Vertex AI location (default: `us-east4`)
-
-### Examples
-
-```bash
-# Using slugified name and period (RECOMMENDED)
-gh-analyze -n varun-sundar -p 2025H2          # Second half of 2025
-gh-analyze -n ariel-ledesma -p 2025H1        # First half of 2025
-gh-analyze -n erin-friesen -p 2026Q1         # First quarter of 2026
-gh-analyze -n varun-sundar -p 2025           # Full year 2025
-
-# Alternative: Using full name (requires quotes)
-gh-analyze -n "Varun Sundar" -p 2025H2
-
-# Using username and dates
-gh-analyze -u varunsundar -s 2025-07-01 -e 2025-12-31
-
-# Custom output directory
-gh-analyze -n varun-sundar -p 2025H2 -o custom/path
-
-# Different organization
-gh-analyze -n varun-sundar -p 2025H2 --org MyOrg
-```
-
-## Configuration
-
-### Centralized Config (`config.json`)
-
-The tool supports a centralized configuration file at the repository root:
+Create a centralized `config.json` at the repository root:
 
 ```json
 {
   "organization": "EvolutionIQ",
+  "drive_folder_ids": ["folder_id_1", "folder_id_2"],
+  "document_types": ["Technical Design Doc", "TDD", "Design Document"],
   "users": [
     {
       "username": "varunsundar",
-      "name": "Varun Sundar"
+      "email": "varun.sundar@evolutioniq.com",
+      "name": "Varun Sundar",
+      "account_id": "712020:9b24a504-5186-4db2-a263-2f66398ba887"
     }
   ]
 }
 ```
 
-**Period Format**: Periods are parsed directly from the `-p` flag. Supported formats:
+**Note:** The `email` field is used for both JIRA and Google Drive authentication. Use the same email for both.
+
+## Tools
+
+### GitHub PR Review Analysis
+
+Analyzes PR review contributions, comment quality, and cross-boundary work.
+
+```bash
+# Using slugified name (recommended)
+scripts/gh-analyze -n varun-sundar -p 2025H2
+
+# Or using just
+just gh-analyze -n varun-sundar -p 2025H2
+```
+
+**Features:**
+- Comment classification (Architecture/Logic/Nits)
+- PR description quality scoring
+- Cross-boundary contribution analysis
+- Conflict management insights
+
+📖 **[Full Documentation →](eiq/gh-analysis/README.md)**
+
+### JIRA Sprint & Epic Analysis
+
+Tracks sprint performance, velocity trends, and epic allocation for time tracking and reporting.
+
+```bash
+# Using slugified name (recommended)
+scripts/jira-analyze -n varun-sundar -p 2025H2
+
+# Or using just
+just jira-analyze -n varun-sundar -p 2025H2
+```
+
+**Features:**
+- Sprint loading and completion analysis
+- Velocity trends and consistency
+- Epic allocation for time sheets/capex reporting
+- Worklog pattern analysis
+
+📖 **[Full Documentation →](eiq/jira-analysis/README.md)**
+
+### Google Docs Analysis
+
+Evaluates technical design documents, comment responses, and team engagement.
+
+```bash
+# Using slugified name (recommended)
+scripts/gdocs-analyze -n varun-sundar -p 2025H2
+
+# Or using just
+just gdocs-analyze -n varun-sundar -p 2025H2
+```
+
+**Features:**
+- Document quality evaluation (clarity, completeness, technical depth)
+- Comment response analysis
+- Team engagement metrics
+- Artifact storage (markdown conversions)
+
+📖 **[Full Documentation →](eiq/gdocs-analysis/README.md)**
+
+## Common Usage Patterns
+
+### Period Formats
+
+All tools support the same period formats:
+
 - `YYYYH1` - First half (Jan 1 - Jun 30)
 - `YYYYH2` - Second half (Jul 1 - Dec 31)
 - `YYYYQ1` - First quarter (Jan 1 - Mar 31)
@@ -116,28 +153,35 @@ The tool supports a centralized configuration file at the repository root:
 - `YYYYQ4` - Fourth quarter (Oct 1 - Dec 31)
 - `YYYY` - Full year (Jan 1 - Dec 31)
 
-When using centralized config, you can reference users by slugified name (recommended) or full name.
+### User Identification
 
-### Individual Config Files
+All tools support multiple ways to identify users:
 
-If a user is not in the centralized config, an individual `config.json` is created in the output directory.
+```bash
+# Slugified name (RECOMMENDED - no quotes needed)
+-n varun-sundar
 
-## Output
+# Full name (requires quotes)
+-n "Varun Sundar"
 
-The tool generates analysis reports in `reports/<slugified-name>/<period>/`:
+# Username/email
+-u varunsundar
+-u varun.sundar@evolutioniq.com
+```
 
-- `github-review-analysis.md` - Comprehensive analysis report
-- `config.json` - User configuration (if using individual configs)
+### Output Structure
 
-### Report Contents
+All tools generate reports in a consistent structure:
 
-- Executive summary
-- Comment classification (Architecture/Logic/Nits)
-- PR description quality scores
-- Cross-boundary contributions analysis
-- Conflict management insights
-- Significant changes summary
-- Recommendations
+```
+reports/
+└── <slugified-name>/
+    └── <period>/
+        ├── <tool>-analysis.md    # Main analysis report
+        ├── config.json            # User config (if individual)
+        └── artifacts/             # Additional artifacts (gdocs only)
+            └── *.md
+```
 
 ## Development
 
@@ -145,16 +189,13 @@ The tool generates analysis reports in `reports/<slugified-name>/<period>/`:
 
 ```bash
 # Install dependencies including dev tools
-just setup
+uv sync --extra dev
 
-# Run tests
-just test
-
-# Format code
-just format
+# Install pre-commit hooks
+pre-commit install
 ```
 
-### Testing
+### Running Tests
 
 ```bash
 # Run all tests
@@ -165,9 +206,6 @@ uv run pytest --cov=eiq.gh-analysis --cov-report=html
 
 # Run specific test
 uv run pytest tests/test_analyze_helpers.py
-
-# Run specific test function
-uv run pytest tests/test_analyze_helpers.py::TestFormatAnalysisPeriod::test_h2_period
 ```
 
 ### Code Quality
@@ -188,69 +226,11 @@ uv run ty check .
 
 ### Pre-commit Hooks
 
-The project uses pre-commit hooks to automatically run linting, type checking, and tests before commits.
+The project uses pre-commit hooks to automatically run linting, type checking, and tests:
 
 ```bash
-# Install pre-commit hooks
-pre-commit install
-
 # Run pre-commit hooks manually
 pre-commit run --all-files
-```
-
-### Test Structure
-
-- `tests/test_analyze_helpers.py` - Tests for helper functions (`_format_analysis_period`, `_parse_github_date`, `_extract_pr_info`, `_filter_reviews_by_user_and_date`)
-- `tests/test_analyze_load_config.py` - Tests for `load_config` function
-- `tests/conftest.py` - Pytest fixtures and configuration
-
-### Writing New Tests
-
-When adding new functions, add corresponding tests:
-
-1. Create test functions in the appropriate test file
-2. Use descriptive test names: `test_<function_name>_<scenario>`
-3. Use fixtures from `conftest.py` when possible
-4. Mock external dependencies (GitHub API, Vertex AI) using `pytest-mock`
-
-## Architecture
-
-The tool uses a LangGraph workflow for orchestration:
-
-```
-load_config → fetch_github → analyze → generate → save → END
-```
-
-- **load_config**: Loads user and period configuration
-- **fetch_github**: Queries GitHub API for PRs and reviews
-- **analyze**: Uses Vertex AI to analyze review data
-- **generate**: Generates markdown report from analysis
-- **save**: Saves report to file system
-
-See `eiq/gh-analysis/workflows/analyze.py` for implementation details.
-
-## Troubleshooting
-
-### "GitHub token required"
-```bash
-export GITHUB_TOKEN=your_token_here
-# Or add to .env file
-```
-
-### "Google Cloud project required"
-```bash
-export GOOGLE_CLOUD_PROJECT=your-project-id
-# Or add to .env file
-```
-
-### "ModuleNotFoundError"
-```bash
-uv sync --extra dev
-```
-
-### Authentication Issues
-```bash
-just auth  # Run Google Cloud authentication
 ```
 
 ## Project Structure
@@ -269,19 +249,64 @@ just auth  # Run Google Cloud authentication
 │   │   ├── cli_utils.py    # Common functions (slugify, period parsing, etc.)
 │   │   └── config_utils.py # Configuration file handling
 │   ├── gh-analysis/        # GitHub PR analysis package
-│   │   ├── workflows/
-│   │   │   └── analyze.py  # LangGraph workflow
-│   │   └── templates/
-│   │       ├── gh-analysis.jinja2.md
-│   │       └── prompt.jinja2.md
+│   │   ├── workflows/      # LangGraph workflows
+│   │   ├── templates/      # Report templates
+│   │   └── README.md       # Detailed documentation
 │   ├── jira-analysis/      # JIRA analysis package
-│   ├── workflows/
-│   │   └── analyze.py      # LangGraph workflow
-│   └── templates/
-│       ├── jira-analysis.jinja2.md
-│       └── prompt.jinja2.md
+│   │   ├── workflows/      # LangGraph workflows
+│   │   ├── templates/      # Report templates
+│   │   └── README.md       # Detailed documentation
+│   └── gdocs-analysis/     # Google Docs analysis package
+│       ├── workflows/      # LangGraph workflows
+│       ├── templates/      # Report templates
+│       └── README.md       # Detailed documentation
 └── tests/                  # Test suite
 ```
+
+## Architecture
+
+All tools follow a consistent LangGraph workflow pattern:
+
+```
+load_config → fetch_data → analyze → generate → save → END
+```
+
+- **load_config**: Loads user and period configuration from centralized or individual config
+- **fetch_data**: Queries APIs (GitHub/JIRA/Google Drive) for relevant data
+- **analyze**: Uses Vertex AI (gemini-2.5-pro) to generate intelligent analysis
+- **generate**: Formats analysis into markdown report using Jinja2 templates
+- **save**: Writes report to file system
+
+See individual module READMEs for workflow-specific details.
+
+## Troubleshooting
+
+### Common Issues
+
+**"Token required" errors:**
+- Ensure `.env` file exists and contains required tokens
+- Check that environment variables are set correctly
+
+**"Google Cloud project required":**
+```bash
+export GOOGLE_CLOUD_PROJECT=your-project-id
+```
+
+**"ModuleNotFoundError":**
+```bash
+uv sync --extra dev
+```
+
+**Authentication Issues:**
+- GitHub: Verify token has correct scopes
+- JIRA: Check API token and email match
+- Google Drive: Ensure OAuth credentials are set up (see [gdocs-analysis README](eiq/gdocs-analysis/README.md))
+
+### Getting Help
+
+- Check individual tool READMEs for tool-specific issues
+- Review `.env.example` for required environment variables
+- Check `config.json` structure matches expected format
 
 ## License
 

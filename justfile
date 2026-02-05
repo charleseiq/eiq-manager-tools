@@ -1,5 +1,75 @@
 # Justfile for common tasks
 
+# Check GitHub authentication (GITHUB_TOKEN, GOOGLE_CLOUD_PROJECT)
+_check_gh_auth:
+    @echo "🔍 Checking GitHub analysis authentication..."
+    @if [ -z "$$GITHUB_TOKEN" ]; then \
+        echo "❌ GITHUB_TOKEN not set"; \
+        echo "   Get token from: https://github.com/settings/tokens"; \
+        echo "   Required scopes: public_repo or repo"; \
+        echo "   Add to .env file or export: export GITHUB_TOKEN=your_token"; \
+        exit 1; \
+    fi
+    @if [ -z "$$GOOGLE_CLOUD_PROJECT" ]; then \
+        echo "❌ GOOGLE_CLOUD_PROJECT not set"; \
+        echo "   Set your Google Cloud project ID"; \
+        echo "   Add to .env file or export: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
+        exit 1; \
+    fi
+    @echo "✓ Authentication check passed"
+
+# Check JIRA authentication (JIRA_TOKEN, JIRA_EMAIL, JIRA_URL, JIRA_PROJECT, GOOGLE_CLOUD_PROJECT)
+_check_jira_auth:
+    @echo "🔍 Checking JIRA analysis authentication..."
+    @if [ -z "$$JIRA_TOKEN" ]; then \
+        echo "❌ JIRA_TOKEN not set"; \
+        echo "   Get token from: https://id.atlassian.com/manage-profile/security/api-tokens"; \
+        echo "   Add to .env file or export: export JIRA_TOKEN=your_token"; \
+        exit 1; \
+    fi
+    @if [ -z "$$JIRA_EMAIL" ]; then \
+        echo "❌ JIRA_EMAIL not set"; \
+        echo "   Set your JIRA email address"; \
+        echo "   Add to .env file or export: export JIRA_EMAIL=your_email@example.com"; \
+        exit 1; \
+    fi
+    @if [ -z "$$JIRA_URL" ]; then \
+        echo "❌ JIRA_URL not set"; \
+        echo "   Set your JIRA instance URL (e.g., https://yourcompany.atlassian.net)"; \
+        echo "   Add to .env file or export: export JIRA_URL=https://yourcompany.atlassian.net"; \
+        exit 1; \
+    fi
+    @if [ -z "$$JIRA_PROJECT" ]; then \
+        echo "❌ JIRA_PROJECT not set"; \
+        echo "   Set your JIRA project key (e.g., WC, PROJ)"; \
+        echo "   Add to .env file or export: export JIRA_PROJECT=WC"; \
+        exit 1; \
+    fi
+    @if [ -z "$$GOOGLE_CLOUD_PROJECT" ]; then \
+        echo "❌ GOOGLE_CLOUD_PROJECT not set"; \
+        echo "   Set your Google Cloud project ID"; \
+        echo "   Add to .env file or export: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
+        exit 1; \
+    fi
+    @echo "✓ Authentication check passed"
+
+# Check Google Docs authentication (GOOGLE_CLOUD_PROJECT, Google Drive credentials)
+_check_gdocs_auth:
+    @echo "🔍 Checking Google Docs analysis authentication..."
+    @if [ -z "$$GOOGLE_CLOUD_PROJECT" ]; then \
+        echo "❌ GOOGLE_CLOUD_PROJECT not set"; \
+        echo "   Set your Google Cloud project ID"; \
+        echo "   Add to .env file or export: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
+        exit 1; \
+    fi
+    @if [ ! -f "$${HOME}/.config/gdocs-analysis/credentials.json" ]; then \
+        echo "❌ Google Drive credentials not found"; \
+        echo "   Expected: $${HOME}/.config/gdocs-analysis/credentials.json"; \
+        echo "   See eiq/gdocs-analysis/README.md for setup instructions"; \
+        exit 1; \
+    fi
+    @echo "✓ Authentication check passed"
+
 # Run PR review analysis - passes all arguments through to gh-analyze
 # 
 # Usage examples:
@@ -16,8 +86,12 @@
 gh-analyze *args:
     #!/usr/bin/env bash
     set -e
+    # Load .env file if it exists
+    if [ -f .env ]; then set -a; source .env; set +a; fi
+    # Check authentication
+    just _check_gh_auth
     # Use uv run to ensure dependencies are available
-    uv run ./gh-analyze {{args}}
+    uv run ./scripts/gh-analyze {{args}}
 
 # Run JIRA sprint & epic analysis - passes all arguments through to jira-analyze
 # 
@@ -36,8 +110,34 @@ gh-analyze *args:
 jira-analyze *args:
     #!/usr/bin/env bash
     set -e
+    # Load .env file if it exists
+    if [ -f .env ]; then set -a; source .env; set +a; fi
+    # Check authentication
+    just _check_jira_auth
     # Use uv run to ensure dependencies are available
-    uv run ./jira-analyze {{args}}
+    uv run ./scripts/jira-analyze {{args}}
+
+# Run Google Docs analysis - passes all arguments through to gdocs-analyze
+# 
+# Usage examples:
+#   just gdocs-analyze -n varun-sundar -p 2025H2            # RECOMMENDED: Slugified name, second half
+#   just gdocs-analyze -n ariel-ledesma -p 2025H1           # First half of 2025
+#   just gdocs-analyze -n erin-friesen -p 2026Q1             # First quarter of 2026
+#   just gdocs-analyze -n varun-sundar -p 2025               # Full year 2025
+# 
+# IMPORTANT: 
+#   - Always use slugified names (e.g., varun-sundar) instead of full names.
+#   - Periods: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., 2025H2, 2026Q1, 2025)
+#   - Requires Google Drive API setup (see eiq/gdocs-analysis/README.md)
+gdocs-analyze *args:
+    #!/usr/bin/env bash
+    set -e
+    # Load .env file if it exists
+    if [ -f .env ]; then set -a; source .env; set +a; fi
+    # Check authentication
+    just _check_gdocs_auth
+    # Use uv run to ensure dependencies are available
+    uv run ./scripts/gdocs-analyze {{args}}
 
 # Authenticate with Google Cloud for Vertex AI access
 auth:
@@ -82,7 +182,7 @@ auth:
 
 # Setup: Install dependencies and verify configuration
 setup:
-    @echo "Setting up GitHub PR Review Analysis..."
+    @echo "Setting up Engineering Performance Analysis Tools..."
     @echo ""
     @echo "1. Installing dependencies (including test dependencies)..."
     @uv sync --extra dev || echo "⚠️  uv sync failed - you may need to install dependencies manually"
@@ -124,9 +224,9 @@ setup:
         echo "✓ GOOGLE_CLOUD_LOCATION is set: $$GOOGLE_CLOUD_LOCATION"; \
     fi
     @echo ""
-    @echo "4. Checking template file..."
+    @echo "4. Checking template files..."
     @if [ -f "eiq/gh-analysis/templates/gh-analysis.jinja2.md" ]; then \
-        echo "✓ Template file exists"; \
+        echo "✓ GitHub analysis template exists"; \
     else \
         echo "❌ Template file not found"; \
     fi
@@ -165,7 +265,10 @@ setup:
     @echo ""
     @echo "Next steps:"
     @echo "  1. If not authenticated: just auth"
-    @echo "  2. Run analysis: just gh-analyze -n <name> -p <period>"
+    @echo "  2. Run analysis:"
+    @echo "     - GitHub: just gh-analyze -n <name> -p <period>"
+    @echo "     - JIRA: just jira-analyze -n <name> -p <period>"
+    @echo "     - Google Docs: just gdocs-analyze -n <name> -p <period>"
     @echo "  3. Run tests: just test"
     @echo "  4. Format code: just format"
 
