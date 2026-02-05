@@ -66,6 +66,7 @@ except ImportError:
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 TEMPLATE_PATH = TEMPLATE_DIR / "jira-analysis.jinja2.md"
 PROMPT_TEMPLATE_PATH = TEMPLATE_DIR / "prompt.jinja2.md"
+ACCOMPLISHMENTS_PROMPT_PATH = TEMPLATE_DIR / "accomplishments-prompt.jinja2.md"
 
 
 class AnalysisState(TypedDict):
@@ -103,6 +104,7 @@ class AnalysisState(TypedDict):
     sprint_metrics: dict[str, dict]
     epic_names: dict[str, str]  # Map epic_key -> epic_name
     analysis_results: dict[str, Any]  # Analysis results from LLM
+    accomplishments_summary: str  # Human-readable accomplishments summary
 
     # Output
     markdown_report: str
@@ -1223,6 +1225,267 @@ Be specific, provide examples, and focus on actionable insights for sprint plann
     return state
 
 
+def generate_accomplishments_summary(state: AnalysisState) -> AnalysisState:
+    """Generate a human-readable accomplishments summary using Vertex AI."""
+    if state.get("error"):
+        return state
+
+    username = state.get("username", "Unknown")
+    analysis_period = state["analysis_period"]
+    project = state["vertexai_project"]
+    location = state.get("vertexai_location", "us-east4")
+    sprint_metrics = state.get("sprint_metrics", {})
+    jira_url = state["jira_url"]
+    jira_token = state.get("jira_token") or os.getenv("JIRA_TOKEN", "")
+    jira_email = state.get("jira_email") or os.getenv("JIRA_EMAIL", "")
+
+    # Initialize JiraSession for parsing descriptions
+    api_base = f"{jira_url}/rest/api/3"
+    jira_session = JiraSession(jira_email, jira_token, api_base)
+
+    if RICH_AVAILABLE:
+        console = Console()
+        console.print("📝 [cyan]Generating accomplishments summary...[/cyan]")
+    else:
+        print("📝 Generating accomplishments summary...")
+
+    # Set quota project to prevent warnings
+    os.environ["GOOGLE_CLOUD_QUOTA_PROJECT"] = project
+
+    # Initialize Vertex AI
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-pro",
+        project=project,
+        location=location,
+        temperature=0.7,  # Slightly higher for more natural language
+    )
+
+    # Analyze quality metrics and epic-level accomplishments
+    issues = state.get("issues", [])
+    epic_names = state.get("epic_names", {})
+
+    # Analyze issue quality: acceptance criteria, references, definitions
+    quality_metrics = {
+        "total_issues": len(issues),
+        "issues_with_description": 0,
+        "issues_with_acceptance_criteria": 0,
+        "issues_with_references": 0,
+        "issues_with_definitions": 0,
+        "planning_tickets": 0,  # TDDs, spikes, design docs
+    }
+
+    # Track epic-level accomplishments and fix versions
+    epic_accomplishments = {}  # epic_key -> list of issues
+    fix_version_accomplishments = {}  # fix_version -> list of issues
+
+    for issue in issues:
+        fields = issue.get("fields", {})
+        description = fields.get("description", {})
+        description_text = ""
+        if isinstance(description, dict):
+            description_text = jira_session.parse_description(description)
+        elif isinstance(description, str):
+            description_text = description
+
+        summary = fields.get("summary", "").lower()
+        issue_type = fields.get("issuetype", {}).get("name", "").lower()
+        status = fields.get("status", {}).get("name", "").lower()
+
+        # Quality metrics
+        if description_text.strip():
+            quality_metrics["issues_with_description"] += 1
+
+        desc_lower = description_text.lower()
+        # Check for acceptance criteria patterns
+        if any(
+            keyword in desc_lower
+            for keyword in [
+                "acceptance criteria",
+                "acceptance",
+                "ac:",
+                "given",
+                "when",
+                "then",
+                "scenario",
+            ]
+        ):
+            quality_metrics["issues_with_acceptance_criteria"] += 1
+
+        # Check for references (links, doc references, etc.)
+        if any(
+            keyword in desc_lower
+            for keyword in [
+                "http://",
+                "https://",
+                "see ",
+                "reference",
+                "related to",
+                "see:",
+                "docs:",
+                "documentation",
+            ]
+        ):
+            quality_metrics["issues_with_references"] += 1
+
+        # Check for definitions (glossary, terminology, etc.)
+        if any(
+            keyword in desc_lower
+            for keyword in [
+                "definition",
+                "define",
+                "means",
+                "refers to",
+                "terminology",
+                "glossary",
+            ]
+        ):
+            quality_metrics["issues_with_definitions"] += 1
+
+        # Identify planning tickets
+        if any(
+            keyword in summary or keyword in issue_type
+            for keyword in ["tdd", "spike", "design", "design doc", "research", "investigation"]
+        ):
+            quality_metrics["planning_tickets"] += 1
+
+        # Track epic-level accomplishments (only completed issues)
+        if status in ["done", "closed", "resolved"]:
+            parent = fields.get("parent")
+            epic_key = None
+            if parent:
+                epic_key = parent.get("key") if isinstance(parent, dict) else str(parent)
+            else:
+                if issue_type == "epic":
+                    epic_key = issue.get("key")
+
+            if epic_key and epic_key != "_no_epic":
+                if epic_key not in epic_accomplishments:
+                    epic_accomplishments[epic_key] = []
+                epic_accomplishments[epic_key].append(
+                    {
+                        "key": issue.get("key"),
+                        "summary": fields.get("summary", ""),
+                        "type": issue_type,
+                    }
+                )
+
+            # Track fix version accomplishments
+            fix_versions = fields.get("fixVersions", [])
+            for fv in fix_versions:
+                fv_name = fv.get("name", "") if isinstance(fv, dict) else str(fv)
+                if fv_name:
+                    if fv_name not in fix_version_accomplishments:
+                        fix_version_accomplishments[fv_name] = []
+                    fix_version_accomplishments[fv_name].append(
+                        {
+                            "key": issue.get("key"),
+                            "summary": fields.get("summary", ""),
+                            "type": issue_type,
+                        }
+                    )
+
+    # Calculate quality percentages
+    total_issues = quality_metrics["total_issues"]
+    quality_percentages = {}
+    if total_issues > 0:
+        quality_percentages = {
+            "description_completeness": (
+                quality_metrics["issues_with_description"] / total_issues * 100
+            ),
+            "acceptance_criteria_rate": (
+                quality_metrics["issues_with_acceptance_criteria"] / total_issues * 100
+            ),
+            "reference_rate": (quality_metrics["issues_with_references"] / total_issues * 100),
+            "definition_rate": (quality_metrics["issues_with_definitions"] / total_issues * 100),
+            "planning_ticket_rate": (quality_metrics["planning_tickets"] / total_issues * 100),
+        }
+
+    # Format epic accomplishments with names
+    epic_accomplishments_formatted = []
+    for epic_key, issues_list in epic_accomplishments.items():
+        epic_name = epic_names.get(epic_key, epic_key)
+        epic_accomplishments_formatted.append(
+            {
+                "epic_key": epic_key,
+                "epic_name": epic_name,
+                "issues": issues_list,
+                "issue_count": len(issues_list),
+            }
+        )
+
+    # Format fix version accomplishments
+    fix_version_accomplishments_formatted = []
+    for fv_name, issues_list in fix_version_accomplishments.items():
+        fix_version_accomplishments_formatted.append(
+            {
+                "fix_version": fv_name,
+                "issues": issues_list,
+                "issue_count": len(issues_list),
+            }
+        )
+
+    # Load accomplishments prompt template
+    with open(ACCOMPLISHMENTS_PROMPT_PATH) as f:
+        prompt_template = Template(f.read())
+
+    # Build prompt
+    ACCOMPLISHMENTS_SYSTEM_PROMPT = """You are an expert at writing realistic performance review summaries.
+Focus on quality metrics (acceptance criteria, references, definitions) and epic-level value delivery rather than just ticket counts.
+Distinguish between planning work (TDDs, design docs) and actual implementation/delivery.
+Be honest and nuanced - not all completed tickets represent delivered value."""
+
+    user_prompt = prompt_template.render(
+        username=username,
+        analysis_period=analysis_period,
+        sprints_count=len(sprint_metrics),
+        total_issues=quality_metrics["total_issues"],
+        quality_metrics_json=json.dumps(quality_metrics, indent=2),
+        quality_percentages_json=json.dumps(quality_percentages, indent=2),
+        epic_accomplishments_json=json.dumps(epic_accomplishments_formatted, indent=2),
+        fix_version_accomplishments_json=json.dumps(
+            fix_version_accomplishments_formatted, indent=2
+        ),
+    )
+
+    # Generate summary
+    messages = [
+        SystemMessage(content=ACCOMPLISHMENTS_SYSTEM_PROMPT),
+        HumanMessage(content=user_prompt),
+    ]
+
+    try:
+        response = llm.invoke(messages)
+        accomplishments_summary = (
+            response.content if hasattr(response, "content") else str(response)
+        )
+        # Clean up any markdown code blocks if LLM added them
+        accomplishments_summary = accomplishments_summary.strip()
+        if accomplishments_summary.startswith("```"):
+            # Remove markdown code blocks
+            lines = accomplishments_summary.split("\n")
+            start_idx = 1 if lines[0].startswith("```") else 0
+            end_idx = len(lines) - 1 if lines[-1].startswith("```") else len(lines)
+            accomplishments_summary = "\n".join(lines[start_idx:end_idx]).strip()
+
+        state["accomplishments_summary"] = accomplishments_summary
+
+        if RICH_AVAILABLE:
+            console = Console()
+            console.print("✓ [green]Accomplishments summary generated[/green]")
+        else:
+            print("✓ Accomplishments summary generated")
+    except Exception as e:
+        # Don't fail the whole workflow if accomplishments summary fails
+        state["accomplishments_summary"] = ""
+        if RICH_AVAILABLE:
+            console = Console()
+            console.print(f"⚠️  [yellow]Accomplishments summary failed: {e}[/yellow]")
+        else:
+            print(f"⚠️  Accomplishments summary failed: {e}")
+
+    return state
+
+
 def generate_report(state: AnalysisState) -> AnalysisState:
     """Generate final markdown report."""
     if state.get("error"):
@@ -1248,9 +1511,28 @@ def generate_report(state: AnalysisState) -> AnalysisState:
         f"- **Issues**: {len(state.get('issues', []))}",
         f"- **Epics**: {len(state.get('epics', {}))}",
         "",
-        "## Sprint Metrics",
-        "",
     ]
+
+    # Add accomplishments summary if available
+    accomplishments_summary = state.get("accomplishments_summary", "")
+    if accomplishments_summary:
+        sprint_section_lines.extend(
+            [
+                "## Accomplishments Summary",
+                "",
+                accomplishments_summary,
+                "",
+                "---",
+                "",
+            ]
+        )
+
+    sprint_section_lines.extend(
+        [
+            "## Sprint Metrics",
+            "",
+        ]
+    )
 
     # Sort sprints by date (most recent first)
     sorted_sprints = sorted(
@@ -1671,6 +1953,7 @@ workflow = StateGraph(AnalysisState)  # type: ignore[type-arg]
 workflow.add_node("load_config", load_config)
 workflow.add_node("fetch_jira", fetch_jira_data)
 workflow.add_node("analyze", analyze_with_vertexai)
+workflow.add_node("accomplishments", generate_accomplishments_summary)
 workflow.add_node("generate", generate_report)
 workflow.add_node("save", save_report)
 
@@ -1678,7 +1961,8 @@ workflow.add_node("save", save_report)
 workflow.set_entry_point("load_config")
 workflow.add_edge("load_config", "fetch_jira")
 workflow.add_edge("fetch_jira", "analyze")
-workflow.add_edge("analyze", "generate")
+workflow.add_edge("analyze", "accomplishments")
+workflow.add_edge("accomplishments", "generate")
 workflow.add_edge("generate", "save")
 workflow.add_edge("save", END)
 
@@ -1742,6 +2026,7 @@ def run(
         "sprint_metrics": {},
         "epic_names": {},
         "analysis_results": {},
+        "accomplishments_summary": "",
         "markdown_report": "",
         "error": None,
     }

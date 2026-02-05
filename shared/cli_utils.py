@@ -149,7 +149,26 @@ def resolve_user_identity(
             if not resolved_username:
                 parser.error(f"User '{resolved_name}' has no username/email in config")
         else:
-            parser.error(f"User '{resolved_name}' not found in config.json")
+            # Provide helpful error with suggestions
+            available_names = [user.get("name", "") for user in config_data.get("users", [])]
+            available_slugs = [slugify(name) for name in available_names if name]
+            input_slug = slugify(resolved_name)
+
+            # Find similar slugs (fuzzy match)
+            suggestions = []
+            for slug in available_slugs:
+                # Check if slugs are similar (same length, few character differences)
+                if len(slug) == len(input_slug):
+                    diff_count = sum(c1 != c2 for c1, c2 in zip(slug, input_slug, strict=False))
+                    if diff_count <= 2:  # Allow up to 2 character differences
+                        suggestions.append(slug)
+
+            error_msg = f"User '{resolved_name}' not found in config.json"
+            if suggestions:
+                error_msg += f"\n\nDid you mean: {', '.join(suggestions)}?"
+            elif available_slugs:
+                error_msg += f"\n\nAvailable users: {', '.join(available_slugs)}"
+            parser.error(error_msg)
 
     # Ensure resolved_username is not None before returning
     if resolved_username is None:
