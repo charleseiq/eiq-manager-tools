@@ -355,13 +355,14 @@ setup:
     @echo "Setup complete!"
     @echo ""
     @echo "Next steps:"
-    @echo "  1. If not authenticated: just auth"
-    @echo "  2. Run analysis:"
+    @echo "  1. Add users: just add-report"
+    @echo "  2. If not authenticated: just auth"
+    @echo "  3. Run analysis:"
     @echo "     - GitHub: just gh-analyze -n <name> -p <period>"
     @echo "     - JIRA: just jira-analyze -n <name> -p <period>"
     @echo "     - Google Docs: just gdocs-analyze -n <name> -p <period>"
-    @echo "  3. Run tests: just test"
-    @echo "  4. Format code: just format"
+    @echo "  4. Run tests: just test"
+    @echo "  5. Format code: just format"
 
 # Run tests
 test:
@@ -373,6 +374,11 @@ format:
     @echo "✨ Formatting code with ruff..."
     @uv run ruff format .
     @uv run ruff check --fix .
+
+# Add a new user to config.json and create report folder structure
+add-report:
+    @echo "📝 Adding new user to config.json..."
+    @uv run python scripts/add-report
 
 # Note: validate.py and fetch scripts have been removed
 # Use gh-analyze for all analysis tasks

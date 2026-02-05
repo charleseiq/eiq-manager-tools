@@ -178,6 +178,12 @@ export JIRA_PROJECT=WC
 - Check username/email spelling matches exactly
 - Try using slugified name format
 
+## Report Structure
+
+Each report directory includes a `notes/` folder for ad-hoc markdown files, self-reviews, and feedback. **Human feedback is essential** - while automated analysis provides valuable metrics, it doesn't capture the full picture. Use the notes folder to add context, self-reviews, manager feedback, and other human insights that complement the automated analysis.
+
+See the [Main README](../../README.md#human-feedback-and-notes) for more details on using the notes folder.
+
 ## See Also
 
 - [Main README](../../README.md) - Overall project documentation

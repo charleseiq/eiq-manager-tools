@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""
+Add a new user to config.json and create report folder structure.
+
+This script:
+1. Prompts for user details (username, email, name, level)
+2. Adds user to config.json
+3. Creates report folder structure with notes directory
+"""
+
+import json
+import sys
+from pathlib import Path
+
+from eiq.shared.cli_utils import slugify
+
+
+def main():
+    """Add a new user to config.json and create report structure."""
+    script_dir = Path(__file__).parent
+    repo_root = script_dir.parent
+    config_path = repo_root / "config.json"
+
+    # Load existing config
+    if config_path.exists():
+        with open(config_path) as f:
+            config = json.load(f)
+    else:
+        config = {"organization": "EvolutionIQ", "users": []}
+
+    # Prompt for user details
+    print("📝 Adding new user to config.json")
+    print("=" * 50)
+
+    username = input("Username (e.g., johndoe): ").strip()
+    if not username:
+        print("❌ Username is required")
+        sys.exit(1)
+
+    # Check if user already exists
+    for user in config.get("users", []):
+        if user.get("username") == username:
+            print(f"❌ User '{username}' already exists in config.json")
+            sys.exit(1)
+
+    email = input("Email (e.g., john.doe@evolutioniq.com): ").strip()
+    if not email:
+        print("❌ Email is required")
+        sys.exit(1)
+
+    name = input("Full name (e.g., John Doe): ").strip()
+    if not name:
+        print("❌ Name is required")
+        sys.exit(1)
+
+    level = input("Level (e.g., L4, L5) [optional]: ").strip()
+    if not level:
+        level = None
+
+    account_id = input("JIRA Account ID [optional]: ").strip()
+    if not account_id:
+        account_id = None
+
+    # Create user object
+    user_obj = {
+        "username": username,
+        "email": email,
+        "name": name,
+    }
+
+    if level:
+        user_obj["level"] = level
+    if account_id:
+        user_obj["account_id"] = account_id
+
+    # Add user to config
+    if "users" not in config:
+        config["users"] = []
+    config["users"].append(user_obj)
+
+    # Save config
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+
+    print(f"\n✓ Added user '{username}' to {config_path}")
+
+    # Create report folder structure
+    reports_dir = repo_root / "reports"
+    slugified_name = slugify(name)
+    user_report_dir = reports_dir / slugified_name
+    notes_dir = user_report_dir / "notes"
+
+    user_report_dir.mkdir(parents=True, exist_ok=True)
+    notes_dir.mkdir(exist_ok=True)
+
+    # Create README in notes folder
+    notes_readme = notes_dir / "README.md"
+    if not notes_readme.exists():
+        notes_readme_content = """# Notes
+
+This folder is for ad-hoc markdown files, self-reviews, and feedback.
+
+## Purpose
+
+While automated analysis provides valuable metrics and insights, human feedback and context are essential for a complete picture. Use this folder to:
+
+- **Self-reviews**: Your own reflections on your work and growth
+- **Feedback**: Notes from managers, peers, or stakeholders
+- **Context**: Additional information that helps explain the metrics
+- **Goals**: Personal development goals and progress tracking
+- **Achievements**: Notable accomplishments that may not be captured in metrics
+
+## How to Use
+
+Simply add markdown files here. For example:
+- `self-review-2025H2.md` - Your self-review for the period
+- `manager-feedback.md` - Feedback from your manager
+- `goals.md` - Development goals and progress
+
+These notes complement the automated analysis reports and provide the human context that metrics alone cannot capture.
+"""
+        with open(notes_readme, "w") as f:
+            f.write(notes_readme_content)
+        print(f"✓ Created notes folder at {notes_dir}")
+        print("✓ Created README.md in notes folder")
+
+    print("\n✓ Created report folder structure:")
+    print(f"  {user_report_dir}")
+    print(f"  {notes_dir}")
+
+    print("\n✅ Done! You can now run analysis for this user:")
+    print(f"  just gh-analyze -n {slugified_name} -p <period>")
+    print(f"  just jira-analyze -n {slugified_name} -p <period>")
+    print(f"  just gdocs-analyze -n {slugified_name} -p <period>")
+
+
+if __name__ == "__main__":
+    main()

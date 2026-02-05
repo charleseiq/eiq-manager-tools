@@ -104,6 +104,32 @@ The ladder criteria cover:
 - **Feedback, Communication, Collaboration**: Feedback delivery, communication, knowledge sharing, team support
 - **Leadership**: Process thinking, influence, mentoring, strategy
 
+## Adding New Users
+
+To add a new user to the system:
+
+```bash
+just add-report
+```
+
+This interactive command will:
+1. Prompt for user details (username, email, name, level, JIRA account ID)
+2. Add the user to `config.json`
+3. Create the report folder structure (`reports/<slugified-name>/notes/`)
+4. Create a README in the notes folder explaining its purpose
+
+## Human Feedback and Notes
+
+Each report directory includes a `notes/` folder for ad-hoc markdown files, self-reviews, and feedback. **Human feedback is essential** - while automated analysis provides valuable metrics, it doesn't capture the full picture. Use the notes folder to:
+
+- **Self-reviews**: Personal reflections on work and growth
+- **Feedback**: Notes from managers, peers, or stakeholders
+- **Context**: Additional information that explains the metrics
+- **Goals**: Development goals and progress tracking
+- **Achievements**: Notable accomplishments not captured in metrics
+
+The notes folder complements automated analysis and provides the human context that metrics alone cannot capture.
+
 ## Tools
 
 ### GitHub PR Review Analysis
@@ -209,10 +235,15 @@ reports/
 └── <slugified-name>/
     └── <period>/
         ├── <tool>-analysis.md    # Main analysis report
+        ├── notes/                 # For ad-hoc markdown files, self-reviews, and feedback
+        │   ├── README.md         # Explains the purpose of the notes folder
+        │   └── <your-files>.md   # Your self-reviews, feedback, etc.
         ├── config.json            # User config (if individual)
         └── artifacts/             # Additional artifacts (gdocs only)
             └── *.md
 ```
+
+**Important**: The `notes/` folder is automatically created in each report directory. Use it to add human context, self-reviews, and feedback that complements the automated analysis. See the [Human Feedback and Notes](#human-feedback-and-notes) section above for more details.
 
 ## Development
 

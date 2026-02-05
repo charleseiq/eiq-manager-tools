@@ -881,6 +881,10 @@ def save_report(state: AnalysisState) -> AnalysisState:
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
+    # Create notes folder for ad-hoc markdown files, self-reviews, and feedback
+    notes_dir = output_dir / "notes"
+    notes_dir.mkdir(exist_ok=True)
+
     with open(output_file, "w") as f:
         f.write(state["markdown_report"])
 

@@ -925,6 +925,11 @@ def save_report(state: AnalysisState) -> AnalysisState:
         report_dir = output_dir / slugified_name / period_str
 
     report_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create notes folder for ad-hoc markdown files, self-reviews, and feedback
+    notes_dir = report_dir / "notes"
+    notes_dir.mkdir(exist_ok=True)
+
     report_path = report_dir / "gdocs-analysis.md"
 
     with open(report_path, "w") as f:
