@@ -86,9 +86,12 @@ Add `drive_folder_ids` and `document_types` to centralized `config.json`:
 ### Environment Variables
 
 ```bash
+EVOLUTIONIQ_EMAIL=your_email@evolutioniq.com
 GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_CLOUD_LOCATION=us-east4
 ```
+
+**Note:** `EVOLUTIONIQ_EMAIL` is shared with JIRA analysis. Use the same email for both JIRA and Google account authentication.
 
 ## Usage
 

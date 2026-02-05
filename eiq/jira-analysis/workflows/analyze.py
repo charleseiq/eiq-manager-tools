@@ -612,14 +612,17 @@ def fetch_jira_data(state: AnalysisState) -> AnalysisState:
     start_date = state["start_date"]
     end_date = state["end_date"]
     jira_token = state.get("jira_token") or os.getenv("JIRA_TOKEN")
-    jira_email = state.get("jira_email") or os.getenv("JIRA_EMAIL")
+    # Support both EVOLUTIONIQ_EMAIL (new) and JIRA_EMAIL (deprecated) for backward compatibility
+    jira_email = (
+        state.get("jira_email") or os.getenv("EVOLUTIONIQ_EMAIL") or os.getenv("JIRA_EMAIL")
+    )
 
     if not jira_token:
         state["error"] = "JIRA token required. Set JIRA_TOKEN environment variable."
         return state
 
     if not jira_email:
-        state["error"] = "JIRA email required. Set JIRA_EMAIL environment variable."
+        state["error"] = "Email required. Set EVOLUTIONIQ_EMAIL environment variable."
         return state
 
     if RICH_AVAILABLE:
@@ -1237,7 +1240,10 @@ def generate_accomplishments_summary(state: AnalysisState) -> AnalysisState:
     sprint_metrics = state.get("sprint_metrics", {})
     jira_url = state["jira_url"]
     jira_token = state.get("jira_token") or os.getenv("JIRA_TOKEN", "")
-    jira_email = state.get("jira_email") or os.getenv("JIRA_EMAIL", "")
+    # Support both EVOLUTIONIQ_EMAIL (new) and JIRA_EMAIL (deprecated) for backward compatibility
+    jira_email = (
+        state.get("jira_email") or os.getenv("EVOLUTIONIQ_EMAIL") or os.getenv("JIRA_EMAIL", "")
+    )
 
     # Initialize JiraSession for parsing descriptions
     api_base = f"{jira_url}/rest/api/3"
@@ -1989,7 +1995,7 @@ def run(
     Args:
         config_path: Path to user config.json file or centralized config.json
         jira_token: JIRA API token (or set JIRA_TOKEN env var)
-        jira_email: JIRA email (or set JIRA_EMAIL env var)
+        jira_email: JIRA email (or set EVOLUTIONIQ_EMAIL env var)
         jira_url: JIRA instance URL (or set JIRA_URL env var)
         jira_project: JIRA project key (required, or set JIRA_PROJECT env var)
         vertexai_project: Google Cloud project ID (or set GOOGLE_CLOUD_PROJECT env var)
@@ -2006,7 +2012,8 @@ def run(
         "config_path": config_path,
         "username": username,
         "jira_username": None,  # Will be populated from config in load_config
-        "jira_email": jira_email or os.getenv("JIRA_EMAIL", ""),
+        # Support both EVOLUTIONIQ_EMAIL (new) and JIRA_EMAIL (deprecated) for backward compatibility
+        "jira_email": jira_email or os.getenv("EVOLUTIONIQ_EMAIL") or os.getenv("JIRA_EMAIL", ""),
         "user_email": None,  # Will be populated from config in load_config (for assignee queries)
         "name": None,  # Will be populated from config in load_config
         "account_id": None,

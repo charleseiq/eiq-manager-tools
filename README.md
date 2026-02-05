@@ -46,9 +46,11 @@ GITHUB_TOKEN=your_github_token_here
 
 # JIRA (for jira-analyze)
 JIRA_TOKEN=your_jira_api_token_here
-JIRA_EMAIL=your_email@example.com
 JIRA_URL=https://yourcompany.atlassian.net
 JIRA_PROJECT=WC
+
+# EvolutionIQ Email (shared across JIRA and Google Docs)
+EVOLUTIONIQ_EMAIL=your_email@evolutioniq.com
 
 # Google Cloud (for all tools)
 GOOGLE_CLOUD_PROJECT=your-project-id

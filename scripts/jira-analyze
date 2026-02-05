@@ -39,7 +39,7 @@ Options:
     --jira-url URL        JIRA instance URL (or set JIRA_URL env var)
     -o, --output DIR      Output directory (default: reports/<slugified-name>/<period>)
     --jira-token TOKEN    JIRA API token (or set JIRA_TOKEN env var)
-    --jira-email EMAIL    JIRA email (or set JIRA_EMAIL env var)
+    --jira-email EMAIL    JIRA email (or set EVOLUTIONIQ_EMAIL env var, deprecated - use EVOLUTIONIQ_EMAIL)
     --project PROJECT     Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)
     --location LOCATION   Vertex AI location (default: us-east4)
 
@@ -225,7 +225,10 @@ def main():
 
     # Credentials
     parser.add_argument("--jira-token", help="JIRA API token (or set JIRA_TOKEN env var)")
-    parser.add_argument("--jira-email", help="JIRA email (or set JIRA_EMAIL env var)")
+    parser.add_argument(
+        "--jira-email",
+        help="JIRA email (or set EVOLUTIONIQ_EMAIL env var, deprecated - use EVOLUTIONIQ_EMAIL)",
+    )
     parser.add_argument(
         "--project", help="Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)"
     )
@@ -261,7 +264,8 @@ def main():
 
     # Validate credentials
     jira_token = args.jira_token or os.getenv("JIRA_TOKEN")
-    jira_email = args.jira_email or os.getenv("JIRA_EMAIL")
+    # Support both EVOLUTIONIQ_EMAIL (new) and JIRA_EMAIL (deprecated) for backward compatibility
+    jira_email = args.jira_email or os.getenv("EVOLUTIONIQ_EMAIL") or os.getenv("JIRA_EMAIL")
     jira_url = args.jira_url or os.getenv("JIRA_URL")
     jira_project = args.jira_project or os.getenv("JIRA_PROJECT", "")
     vertexai_project = args.project or os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -270,7 +274,7 @@ def main():
         parser.error("JIRA token required. Set --jira-token or JIRA_TOKEN environment variable")
 
     if not jira_email:
-        parser.error("JIRA email required. Set --jira-email or JIRA_EMAIL environment variable")
+        parser.error("Email required. Set --jira-email or EVOLUTIONIQ_EMAIL environment variable")
 
     if not jira_url:
         parser.error("JIRA URL required. Set --jira-url or JIRA_URL environment variable")

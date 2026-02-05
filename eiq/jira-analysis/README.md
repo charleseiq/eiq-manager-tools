@@ -33,14 +33,16 @@ just jira-analyze -n varun-sundar -p 2025H2
 
 ```bash
 JIRA_TOKEN=your_jira_api_token_here
-JIRA_EMAIL=your_email@example.com
 JIRA_URL=https://yourcompany.atlassian.net
 JIRA_PROJECT=WC
+EVOLUTIONIQ_EMAIL=your_email@evolutioniq.com
 GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_CLOUD_LOCATION=us-east4
 ```
 
-**Important:** `JIRA_URL` and `JIRA_PROJECT` must be set in `.env` file, not in `config.json`.
+**Important Notes:**
+- `JIRA_URL` and `JIRA_PROJECT` must be set in `.env` file, not in `config.json`
+- `EVOLUTIONIQ_EMAIL` is shared across JIRA and Google Docs (use the same email for both)
 
 ### Configuration
 
@@ -90,7 +92,7 @@ scripts/jira-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
 - `--jira-project PROJECT` - JIRA project key (or set JIRA_PROJECT env var)
 - `-o, --output DIR` - Output directory
 - `--jira-token TOKEN` - JIRA API token (or set JIRA_TOKEN env var)
-- `--jira-email EMAIL` - JIRA email (or set JIRA_EMAIL env var)
+- `--jira-email EMAIL` - JIRA email (or set EVOLUTIONIQ_EMAIL env var, deprecated - use EVOLUTIONIQ_EMAIL)
 - `--project PROJECT` - Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)
 
 ## Output
@@ -152,7 +154,7 @@ load_config → fetch_jira → analyze → accomplishments → generate → save
 ### "JIRA token required"
 ```bash
 export JIRA_TOKEN=your_token_here
-export JIRA_EMAIL=your_email@example.com
+export EVOLUTIONIQ_EMAIL=your_email@evolutioniq.com
 export JIRA_URL=https://yourcompany.atlassian.net
 export JIRA_PROJECT=WC
 ```

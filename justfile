@@ -18,7 +18,7 @@ _check_gh_auth:
     fi
     @echo "✓ Authentication check passed"
 
-# Check JIRA authentication (JIRA_TOKEN, JIRA_EMAIL, JIRA_URL, JIRA_PROJECT, GOOGLE_CLOUD_PROJECT)
+# Check JIRA authentication (JIRA_TOKEN, EVOLUTIONIQ_EMAIL, JIRA_URL, JIRA_PROJECT, GOOGLE_CLOUD_PROJECT)
 _check_jira_auth:
     @echo "🔍 Checking JIRA analysis authentication..."
     @if [ -z "$$JIRA_TOKEN" ]; then \
@@ -27,10 +27,10 @@ _check_jira_auth:
         echo "   Add to .env file or export: export JIRA_TOKEN=your_token"; \
         exit 1; \
     fi
-    @if [ -z "$$JIRA_EMAIL" ]; then \
-        echo "❌ JIRA_EMAIL not set"; \
-        echo "   Set your JIRA email address"; \
-        echo "   Add to .env file or export: export JIRA_EMAIL=your_email@example.com"; \
+    @if [ -z "$$EVOLUTIONIQ_EMAIL" ]; then \
+        echo "❌ EVOLUTIONIQ_EMAIL not set"; \
+        echo "   Set your EvolutionIQ email address (same email used for JIRA and Google account)"; \
+        echo "   Add to .env file or export: export EVOLUTIONIQ_EMAIL=your_email@evolutioniq.com"; \
         exit 1; \
     fi
     @if [ -z "$$JIRA_URL" ]; then \
@@ -106,7 +106,7 @@ gh-analyze *args:
 # IMPORTANT: 
 #   - Always use slugified names (e.g., varun-sundar) instead of full names.
 #   - Periods: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., 2025H2, 2026Q1, 2025)
-#   - Requires JIRA_TOKEN, JIRA_EMAIL, and JIRA_URL environment variables
+#   - Requires JIRA_TOKEN, EVOLUTIONIQ_EMAIL, and JIRA_URL environment variables
 jira-analyze *args:
     #!/usr/bin/env bash
     set -e
@@ -195,8 +195,10 @@ setup:
             cp .env.example .env; \
             echo "✓ Created .env from .env.example"; \
             echo "   ⚠️  Please edit .env and fill in your values:"; \
-            echo "      - GITHUB_TOKEN"; \
-            echo "      - GOOGLE_CLOUD_PROJECT"; \
+            echo "      - GITHUB_TOKEN (for gh-analyze)"; \
+            echo "      - JIRA_TOKEN, JIRA_URL, JIRA_PROJECT (for jira-analyze)"; \
+            echo "      - EVOLUTIONIQ_EMAIL (shared for JIRA and Google Docs)"; \
+            echo "      - GOOGLE_CLOUD_PROJECT (for all tools)"; \
         else \
             echo "⚠️  .env.example not found"; \
         fi; \
