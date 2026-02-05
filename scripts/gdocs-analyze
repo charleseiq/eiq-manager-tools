@@ -39,11 +39,11 @@ Options:
 Note: Provide either (name OR username) AND (period OR start+end dates)
 
 Configuration:
-    When using centralized config.json, add drive_folder_ids and document_types at the top level:
+    By default, searches all Google Docs in your Drive. Optional: add drive_folder_ids and document_types at the top level:
     {
       "organization": "EvolutionIQ",
-      "drive_folder_ids": ["folder_id_1", "folder_id_2"],
-      "document_types": ["Technical Design Doc", "TDD", "Design Document"],
+      "drive_folder_ids": ["folder_id_1", "folder_id_2"],  # Optional - limits search to these folders
+      "document_types": ["Technical Design Doc", "TDD", "Design Document"],  # Optional - only used with drive_folder_ids
       "users": [
         {
           "username": "user",
@@ -248,12 +248,10 @@ def main():
     # Determine config file (centralized or individual)
     if centralized_config:
         config_file = config_file_path
-        # Check if drive_folder_ids are configured
+        # drive_folder_ids is now optional - if not provided, all Google Docs will be searched
         if config_data and not config_data.get("drive_folder_ids"):
-            print("⚠️  Warning: drive_folder_ids not found in centralized config")
-            print(f"   Please add drive_folder_ids to {config_file}")
-            print('   Example: {"drive_folder_ids": ["folder_id_1", "folder_id_2"]}')
-            sys.exit(1)
+            print("ℹ️  Note: drive_folder_ids not found in centralized config")
+            print("   Will search all Google Docs in your Drive for the specified date range")
     else:
         # Create individual config file in output directory
         config_file = Path(output_dir) / "config.json"
@@ -265,14 +263,14 @@ def main():
                 "email": username,  # Use email field (same as JIRA)
                 "start_date": start_date,
                 "end_date": end_date,
-                "drive_folder_ids": [],  # User needs to fill this in
-                "document_types": ["Technical Design Doc", "TDD", "Design Document"],
+                # drive_folder_ids and document_types are optional
+                # If not provided, all Google Docs will be searched
             }
             with open(config_file, "w") as f:
                 json.dump(config, f, indent=2)
-            print(f"⚠️  Created config file: {config_file}")
-            print("   Please add drive_folder_ids to the config file before running again.")
-            sys.exit(1)
+            print(f"ℹ️  Created config file: {config_file}")
+            print("   Will search all Google Docs in your Drive for the specified date range")
+            print("   (Optional: Add drive_folder_ids to limit search to specific folders)")
 
     # Import and run workflow
     if vertexai_project is None:

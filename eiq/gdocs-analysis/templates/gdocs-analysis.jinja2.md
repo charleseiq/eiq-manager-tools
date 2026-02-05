@@ -24,9 +24,11 @@
 
 **Quality Metrics:**
 
-| Document | Clarity | Completeness | Technical Depth | Structure | Overall Score |
-|----------|---------|--------------|-----------------|-----------|---------------|
+| Document | Problem Clarity | Concept Clarity | Execution Path | Diagrams* | Overall Score |
+|----------|-----------------|-----------------|----------------|-----------|---------------|
 {{ quality_metrics_table }}
+
+*Diagrams: Required for architecture changes, optional otherwise
 
 ### Strengths
 

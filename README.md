@@ -19,7 +19,8 @@ Together, these tools provide a comprehensive view of engineering performance ac
 - Python 3.12+
 - [uv](https://github.com/astral-sh/uv) package manager
 - Google Cloud project with Vertex AI enabled
-- API credentials (GitHub token, JIRA token, Google Drive OAuth)
+- API credentials (GitHub token, JIRA token)
+- Google Cloud Application Default Credentials (set up via `just auth`)
 
 ### Installation
 
@@ -29,11 +30,14 @@ git clone <repository-url>
 cd management
 
 # Install dependencies
-uv sync
+uv sync --extra dev
 
 # Set up environment variables (copy from .env.example)
 cp .env.example .env
 # Edit .env with your credentials
+
+# Set up authentication (one-time setup)
+just auth
 ```
 
 ### Environment Variables
@@ -50,6 +54,7 @@ JIRA_URL=https://yourcompany.atlassian.net
 JIRA_PROJECT=WC
 
 # EvolutionIQ Email (shared across JIRA and Google Docs)
+# Use the same email for both JIRA and Google account authentication
 EVOLUTIONIQ_EMAIL=your_email@evolutioniq.com
 
 # Google Cloud (for all tools)
@@ -64,8 +69,6 @@ Create a centralized `config.json` at the repository root:
 ```json
 {
   "organization": "EvolutionIQ",
-  "drive_folder_ids": ["folder_id_1", "folder_id_2"],
-  "document_types": ["Technical Design Doc", "TDD", "Design Document"],
   "users": [
     {
       "username": "varunsundar",
@@ -77,7 +80,9 @@ Create a centralized `config.json` at the repository root:
 }
 ```
 
-**Note:** The `email` field is used for both JIRA and Google Drive authentication. Use the same email for both.
+**Note:** 
+- The `email` field is used for both JIRA and Google Drive authentication. Use the same email for both.
+- `drive_folder_ids` and `document_types` are optional (deprecated). By default, Google Docs analysis searches all documents owned by the user.
 
 ## Tools
 
@@ -134,10 +139,14 @@ just gdocs-analyze -n varun-sundar -p 2025H2
 ```
 
 **Features:**
-- Document quality evaluation (clarity, completeness, technical depth)
+- Document quality evaluation (problem clarity, concept clarity, execution path)
+- Owner filtering (only analyzes documents owned by the user)
+- Automatic document discovery (searches all Google Docs owned by user)
 - Comment response analysis
 - Team engagement metrics
 - Artifact storage (markdown conversions)
+
+**Note:** Run `just auth` first to set up Google Drive authentication using Secret Manager.
 
 📖 **[Full Documentation →](eiq/gdocs-analysis/README.md)**
 
@@ -194,7 +203,10 @@ reports/
 uv sync --extra dev
 
 # Install pre-commit hooks
-pre-commit install
+uv run pre-commit install
+
+# Set up authentication (one-time setup)
+just auth
 ```
 
 ### Running Tests
@@ -301,8 +313,8 @@ uv sync --extra dev
 
 **Authentication Issues:**
 - GitHub: Verify token has correct scopes
-- JIRA: Check API token and email match
-- Google Drive: Ensure OAuth credentials are set up (see [gdocs-analysis README](eiq/gdocs-analysis/README.md))
+- JIRA: Check API token and EVOLUTIONIQ_EMAIL match
+- Google Drive: Run `just auth` to set up authentication using Secret Manager (see [gdocs-analysis README](eiq/gdocs-analysis/README.md))
 
 ### Getting Help
 

@@ -5,18 +5,24 @@ Analyzes technical design documents and other write-ups from Google Docs to eval
 ## Quick Start
 
 ```bash
-# Using slugified name with period (recommended)
-scripts/gdocs-analyze -n varun-sundar -p 2025H2
+# First-time setup: Authenticate (one-time)
+just auth
 
-# Or using just
+# Run analysis
 just gdocs-analyze -n varun-sundar -p 2025H2
+
+# Or using the script directly
+scripts/gdocs-analyze -n varun-sundar -p 2025H2
 ```
+
+**Note:** The tool automatically searches all Google Docs owned by the user within the specified date range. No folder configuration needed!
 
 ## Features
 
-- **Document Scraping**: Automatically finds Google Docs from specified folders
+- **Document Discovery**: Automatically finds Google Docs owned by the user within a date range
+- **Owner Filtering**: Only analyzes documents where the user is the owner
 - **Markdown Conversion**: Converts documents to markdown for analysis
-- **Quality Evaluation**: Analyzes clarity, completeness, technical depth, and structure
+- **Quality Evaluation**: Analyzes problem clarity, concept clarity, and execution path
 - **Comment Analysis**: Evaluates how authors responded to feedback
 - **Engagement Metrics**: Measures team collaboration and discussion depth
 - **Artifact Storage**: Saves converted markdown files for reference
@@ -26,26 +32,34 @@ just gdocs-analyze -n varun-sundar -p 2025H2
 ### Prerequisites
 
 1. Google Cloud project with Google Drive API enabled
-2. OAuth 2.0 credentials configured
-3. Google Drive folders with design documents
-4. Google Cloud project with Vertex AI enabled
+2. Google Cloud project with Vertex AI enabled
+3. Application Default Credentials configured (via `just auth`)
 
-### Google Drive API Setup
+### Authentication Setup
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable **Google Drive API**:
+The easiest way to set up authentication is using the `just auth` command:
+
+```bash
+just auth
+```
+
+This command will:
+1. Set up Google Cloud Application Default Credentials (for Vertex AI)
+2. Generate Google Drive OAuth token using Secret Manager (no manual credential file needed)
+3. Verify all required APIs are enabled
+
+**Manual Setup (Alternative):**
+
+If you prefer manual setup or need to use a different authentication method:
+
+1. Enable **Google Drive API**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
    - Navigate to "APIs & Services" > "Library"
    - Search for "Google Drive API" and enable it
-3. Create OAuth 2.0 credentials:
-   - Go to "APIs & Services" > "Credentials"
-   - Click "Create Credentials" > "OAuth client ID"
-   - Choose "Desktop app" as application type
-   - Download credentials JSON file
-4. Place credentials file:
-   ```bash
-   mkdir -p ~/.config/gdocs-analysis
-   cp /path/to/downloaded/credentials.json ~/.config/gdocs-analysis/credentials.json
-   ```
+2. OAuth credentials are managed via Secret Manager:
+   - Credentials are stored in GCP Secret Manager (`google_drive_oauth_json` secret)
+   - The `generate-drive-token.py` script retrieves them automatically
+   - Or manually download credentials and place at `~/.config/gdocs-analysis/credentials.json`
 
 ### Configuration
 
@@ -77,11 +91,12 @@ just gdocs-analyze -n varun-sundar -p 2025H2
 ```
 
 **Important Notes:**
-- The `email` field is the same email used for JIRA
+- The `email` field is the same email used for JIRA (set via `EVOLUTIONIQ_EMAIL` environment variable)
 - During OAuth flow, authenticate with the same Google account as this email
-- **By default, all Google Docs in your Drive are searched** - no `drive_folder_ids` or `document_types` needed
-- If `drive_folder_ids` is specified, only those folders will be searched (legacy behavior)
-- If `document_types` is specified with `drive_folder_ids`, only documents matching those name patterns will be included
+- **By default, all Google Docs owned by the user are searched** - no `drive_folder_ids` or `document_types` needed
+- Only documents where the user is an owner are included in the analysis
+- If `drive_folder_ids` is specified, only those folders will be searched (legacy behavior, deprecated)
+- If `document_types` is specified with `drive_folder_ids`, only documents matching those name patterns will be included (deprecated)
 
 ### Environment Variables
 
@@ -139,10 +154,29 @@ The analysis generates:
 ## Evaluation Criteria
 
 ### Document Quality
-- **Clarity**: How easy is the document to understand?
-- **Completeness**: Does it cover all necessary aspects (problem, solution, alternatives, risks, implementation)?
-- **Technical Depth**: Does it demonstrate deep technical understanding?
-- **Structure**: Is it well-organized with clear sections?
+
+Documents are evaluated against three core criteria:
+
+1. **Clarity of Problem Statement**
+   - Is the problem being addressed clearly defined?
+   - Is the "why" (motivation/context) clearly explained?
+   - Can a reader understand what problem this design solves?
+
+2. **Clarity of Concept and Communication**
+   - Is the proposed solution concept clearly explained?
+   - Does it effectively communicate the "what" (what is being built/changed)?
+   - Are technical concepts explained accessibly?
+   - Is the document free of ambiguity?
+
+3. **Clear Execution Path**
+   - Is there a concrete, actionable plan for implementation?
+   - Are steps, phases, dependencies, and sequencing clearly defined?
+   - Is it clear how to proceed from reading to implementing?
+
+**Additional Requirements:**
+- **Diagrams**: Required for architecture changes. Diagrams should illustrate current vs. proposed state.
+- Documents must excel in all three core areas to receive high scores.
+- Missing diagrams for architecture changes results in lower scores.
 
 ### Comment Responses
 - **Response Rate**: How many comments received responses?
@@ -164,8 +198,8 @@ The analysis uses a LangGraph workflow:
 load_config → fetch_gdocs → analyze → generate → save → END
 ```
 
-- **load_config**: Loads user configuration and Google Drive folder IDs
-- **fetch_gdocs**: Lists documents from Google Drive folders and converts to markdown
+- **load_config**: Loads user configuration (email from config.json)
+- **fetch_gdocs**: Searches Google Drive for documents owned by the user, filters by date range, and converts to markdown
 - **analyze**: Uses Vertex AI to evaluate document quality, responses, and engagement
 - **generate**: Formats analysis into markdown report
 - **save**: Writes report and artifacts to file system
@@ -182,25 +216,29 @@ load_config → fetch_gdocs → analyze → generate → save → END
 
 ### Authentication Issues
 
-**"Credentials file not found":**
-- Ensure `credentials.json` is in `~/.config/gdocs-analysis/`
-- Verify file was downloaded from Google Cloud Console
+**"Google Drive token not found":**
+- Run `just auth` to generate the token automatically using Secret Manager
+- Or manually run `just generate-drive-token` if you need to regenerate
 
 **"Failed to authenticate with Google Drive":**
-- Delete `~/.config/gdocs-analysis/token.json` and re-authenticate
+- Delete `~/.config/gdocs-analysis/token.json` and run `just auth` again
 - Ensure Google Drive API is enabled in your Google Cloud project
 - Verify OAuth consent screen is configured
+- Ensure Application Default Credentials are set up (run `just auth`)
 
 **"Please authenticate with Google account":**
-- During OAuth flow, use the same Google account as the email in `config.json`
+- During OAuth flow, use the same Google account as your `EVOLUTIONIQ_EMAIL`
 - This should match your JIRA email
+- If on a remote server, ensure SSH tunnel on port 8989 is set up
 
 ### No Documents Found
 
 - Ensure documents were created/modified within the date range
-- Verify you have read access to the documents
-- If using `drive_folder_ids`, verify folder IDs are correct in `config.json`
-- If using `document_types`, check that document names match the patterns
+- **Important**: Only documents where the user is an owner are included
+- Verify you are the owner of the documents (not just a viewer/editor)
+- Check that the email in `config.json` matches the Google account that owns the documents
+- If using `drive_folder_ids` (deprecated), verify folder IDs are correct in `config.json`
+- If using `document_types` (deprecated), check that document names match the patterns
 
 ### Conversion Errors
 

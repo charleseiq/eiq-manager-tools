@@ -12,10 +12,36 @@ Analyze the Google Docs technical design documents for {{ name }} ({{ username }
 **Instructions:**
 
 1. **Document Quality Evaluation:**
-   - Assess clarity: Is the document easy to understand? Does it explain technical concepts clearly?
-   - Evaluate completeness: Does it cover all necessary aspects (problem statement, solution design, alternatives considered, risks, implementation plan)?
-   - Measure technical depth: Does it demonstrate deep technical understanding? Are technical decisions well-reasoned?
-   - Review structure: Is the document well-organized with clear sections? Does it follow a logical flow?
+   
+   Evaluate each document rigorously against these core criteria:
+   
+   a. **Clarity of Problem Statement:**
+      - Is the problem being addressed clearly defined?
+      - Is the "why" (motivation/context) clearly explained?
+      - Can a reader understand what problem this design solves without prior context?
+   
+   b. **Clarity of Concept and Communication:**
+      - Is the proposed solution concept clearly explained?
+      - Does it effectively communicate the "what" (what is being built/changed)?
+      - Are technical concepts explained in a way that's accessible to the intended audience?
+      - Is the document free of ambiguity that could lead to misunderstandings?
+   
+   c. **Clear Execution Path:**
+      - Is there a concrete, actionable plan for implementation?
+      - Are the steps or phases clearly defined?
+      - Is it clear how to proceed from reading the document to implementing it?
+      - Are dependencies, prerequisites, and sequencing made explicit?
+   
+   d. **Architecture Changes:**
+      - If the design involves architecture changes, are diagrams included?
+      - Do diagrams effectively illustrate the current vs. proposed state?
+      - Are architectural decisions and their implications clearly explained?
+   
+   **Scoring Guidelines:**
+   - Be critical and realistic. A good design doc must excel in all three core areas (problem clarity, concept clarity, execution path).
+   - Missing diagrams for architecture changes is a significant gap.
+   - Vague problem statements or unclear execution paths should result in lower scores.
+   - Documents that don't clearly convey "what" and "why" should be marked down.
 
 2. **Comment Response Quality:**
    - Analyze how authors responded to comments and feedback

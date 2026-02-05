@@ -53,7 +53,7 @@ _check_jira_auth:
     fi
     @echo "✓ Authentication check passed"
 
-# Check Google Docs authentication (GOOGLE_CLOUD_PROJECT, Google Drive credentials)
+# Check Google Docs authentication (GOOGLE_CLOUD_PROJECT, Google Drive token)
 _check_gdocs_auth:
     @echo "🔍 Checking Google Docs analysis authentication..."
     @if [ -z "$$GOOGLE_CLOUD_PROJECT" ]; then \
@@ -62,11 +62,13 @@ _check_gdocs_auth:
         echo "   Add to .env file or export: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
         exit 1; \
     fi
-    @if [ ! -f "$${HOME}/.config/gdocs-analysis/credentials.json" ]; then \
-        echo "❌ Google Drive credentials not found"; \
-        echo "   Expected: $${HOME}/.config/gdocs-analysis/credentials.json"; \
-        echo "   See eiq/gdocs-analysis/README.md for setup instructions"; \
-        exit 1; \
+    @TOKEN_FILE="$$HOME/.config/gdocs-analysis/token.json"; \
+    if [ ! -f "$$TOKEN_FILE" ]; then \
+        echo "⚠️  Google Drive token not found: $$TOKEN_FILE"; \
+        echo "   The workflow will attempt to generate it using Secret Manager"; \
+        echo "   If that fails, run 'just auth' to generate the token first"; \
+    else \
+        echo "✓ Google Drive token found"; \
     fi
     @echo "✓ Authentication check passed"
 

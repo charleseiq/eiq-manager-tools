@@ -277,8 +277,10 @@ def _get_google_drive_service(expected_email: str | None = None):
     return build("drive", "v3", credentials=creds)
 
 
-def _list_all_documents(service: Any, start_date: str, end_date: str) -> list[dict]:
-    """List all Google Docs in user's Drive within date range."""
+def _list_all_documents(
+    service: Any, start_date: str, end_date: str, user_email: str | None = None
+) -> list[dict]:
+    """List all Google Docs in user's Drive within date range, filtered by owner."""
     documents = []
 
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC)
@@ -287,6 +289,8 @@ def _list_all_documents(service: Any, start_date: str, end_date: str) -> list[di
 
     try:
         # Query for all Google Docs (not trashed)
+        # Note: Google Drive API query doesn't support filtering by owner email directly,
+        # so we'll filter in Python after fetching
         query = "mimeType='application/vnd.google-apps.document' and trashed=false"
         page_token = None
         all_items = []
@@ -297,7 +301,7 @@ def _list_all_documents(service: Any, start_date: str, end_date: str) -> list[di
                 service.files()
                 .list(
                     q=query,
-                    fields="nextPageToken, files(id, name, createdTime, modifiedTime, webViewLink, owners)",
+                    fields="nextPageToken, files(id, name, createdTime, modifiedTime, webViewLink, owners(emailAddress, displayName))",
                     orderBy="modifiedTime desc",
                     pageToken=page_token,
                     pageSize=1000,  # Max page size
@@ -312,13 +316,25 @@ def _list_all_documents(service: Any, start_date: str, end_date: str) -> list[di
             if not page_token:
                 break
 
-        # Filter by date range
+        # Filter by date range and verify ownership
         for item in all_items:
             modified_time = datetime.fromisoformat(item["modifiedTime"].replace("Z", "+00:00"))
             created_time = datetime.fromisoformat(item["createdTime"].replace("Z", "+00:00"))
 
             # Include if created or modified in date range
             if start_dt <= modified_time <= end_dt or start_dt <= created_time <= end_dt:
+                # Filter by ownership - only include documents where user is an owner
+                owners = item.get("owners", [])
+                owner_emails = [
+                    owner.get("emailAddress", "") for owner in owners if owner.get("emailAddress")
+                ]
+
+                # If user_email is specified, only include if user is an owner
+                if user_email:
+                    user_email_lower = user_email.lower()
+                    if not any(user_email_lower == email.lower() for email in owner_emails):
+                        continue
+
                 documents.append(
                     {
                         "id": item["id"],
@@ -326,9 +342,7 @@ def _list_all_documents(service: Any, start_date: str, end_date: str) -> list[di
                         "created_time": item["createdTime"],
                         "modified_time": item["modifiedTime"],
                         "url": item["webViewLink"],
-                        "owners": [
-                            owner.get("displayName", "") for owner in item.get("owners", [])
-                        ],
+                        "owners": [owner.get("displayName", "") for owner in owners],
                     }
                 )
 
@@ -356,7 +370,7 @@ def _list_documents_in_folder_legacy(
             service.files()
             .list(
                 q=query,
-                fields="files(id, name, createdTime, modifiedTime, webViewLink, owners)",
+                fields="files(id, name, createdTime, modifiedTime, webViewLink, owners(emailAddress, displayName))",
                 orderBy="modifiedTime desc",
             )
             .execute()
@@ -380,6 +394,8 @@ def _list_documents_in_folder_legacy(
                 if not matches_type:
                     continue
 
+            # Store both email and display name for owner filtering
+            owners_data = item.get("owners", [])
             documents.append(
                 {
                     "id": item["id"],
@@ -387,7 +403,12 @@ def _list_documents_in_folder_legacy(
                     "created_time": item["createdTime"],
                     "modified_time": item["modifiedTime"],
                     "url": item["webViewLink"],
-                    "owners": [owner.get("displayName", "") for owner in item.get("owners", [])],
+                    "owners": [owner.get("displayName", "") for owner in owners_data],
+                    "owner_emails": [
+                        owner.get("emailAddress", "")
+                        for owner in owners_data
+                        if owner.get("emailAddress")
+                    ],
                 }
             )
 
@@ -518,6 +539,17 @@ def fetch_gdocs_data(state: AnalysisState) -> AnalysisState:
             docs = _list_documents_in_folder_legacy(
                 service, folder_id, start_date, end_date, document_types
             )
+            # Filter by owner in legacy mode too
+            if expected_email:
+                expected_email_lower = expected_email.lower()
+                docs = [
+                    doc
+                    for doc in docs
+                    if any(
+                        expected_email_lower == email.lower()
+                        for email in doc.get("owner_emails", [])
+                    )
+                ]
             all_documents.extend(docs)
 
             if RICH_AVAILABLE:
@@ -525,13 +557,15 @@ def fetch_gdocs_data(state: AnalysisState) -> AnalysisState:
             else:
                 print(f"  Found {len(docs)} documents")
     else:
-        # New: Search all Google Docs in user's Drive
+        # New: Search all Google Docs in user's Drive (owned by the user)
         if RICH_AVAILABLE:
-            console.print("  [dim]Searching all Google Docs in your Drive...[/dim]")
+            console.print("  [dim]Searching Google Docs owned by you...[/dim]")
         else:
-            print("  Searching all Google Docs in your Drive...")
+            print("  Searching Google Docs owned by you...")
 
-        all_documents = _list_all_documents(service, start_date, end_date)
+        all_documents = _list_all_documents(
+            service, start_date, end_date, user_email=expected_email
+        )
 
         if RICH_AVAILABLE:
             console.print(f"  [green]Found {len(all_documents)} documents[/green]")
@@ -732,10 +766,18 @@ def analyze_with_vertexai(state: AnalysisState) -> AnalysisState:
     # Build prompt with template
     ANALYSIS_SYSTEM_PROMPT = """You are an expert at analyzing technical design documents for engineering performance evaluation.
 
-Your task is to evaluate:
-1. Document quality: clarity, completeness, technical depth, structure
-2. Comment response quality: how well authors addressed feedback, incorporated suggestions
-3. Team engagement: comment volume, discussion depth, collaboration patterns
+Your task is to evaluate documents rigorously against these core criteria:
+
+1. **Problem Clarity**: Is the problem being addressed clearly defined? Does it explain the "why"?
+2. **Concept Clarity**: Is the proposed solution clearly communicated? Does it effectively convey the "what"?
+3. **Execution Path**: Is there a clear, actionable plan for implementation?
+4. **Architecture Diagrams**: Are diagrams included for architecture changes?
+
+Be critical and realistic. A good design doc must excel in problem clarity, concept clarity, and execution path. Missing diagrams for architecture changes is a significant gap. Documents that don't clearly convey "what" and "why" should be marked down.
+
+Also evaluate:
+- Comment response quality: how well authors addressed feedback, incorporated suggestions
+- Team engagement: comment volume, discussion depth, collaboration patterns
 
 Be specific, provide examples, and focus on actionable insights for improving technical documentation and design review processes."""
 
