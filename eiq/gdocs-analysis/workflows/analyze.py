@@ -36,6 +36,17 @@ from langchain_core.messages import HumanMessage, SystemMessage  # noqa: E402
 from langgraph.graph import END, StateGraph  # noqa: E402
 from markitdown import MarkItDown  # noqa: E402
 
+# Import ladder utilities for level-based evaluation
+try:
+    from eiq.shared.ladder_utils import format_level_criteria_for_prompt
+except ImportError:
+    # Fallback if ladder utils not available
+    def format_level_criteria_for_prompt(
+        level: str, ladder_file: Path | None = None, include_next_level: bool = True
+    ) -> str:
+        return ""
+
+
 # Try to import rich for better progress display, fallback to simple prints
 try:
     from rich.console import Console
@@ -98,6 +109,7 @@ class AnalysisState(TypedDict):
     # Input
     username: str | None
     name: str | None
+    level: str | None  # Engineer level (e.g., "L4", "L5") for evaluation criteria
     start_date: str
     end_date: str
     analysis_period: str
@@ -484,6 +496,7 @@ def load_config(state: AnalysisState) -> AnalysisState:
     state["start_date"] = config.get("start_date", state.get("start_date", "2025-07-01"))
     state["end_date"] = config.get("end_date", state.get("end_date", "2025-12-31"))
     state["analysis_period"] = _format_analysis_period(state["start_date"], state["end_date"])
+    state["level"] = config.get("level")  # Store level for evaluation criteria
     # drive_folder_ids and document_types are now optional (deprecated)
     # If not provided, all Google Docs in the user's Drive will be searched
     state["drive_folder_ids"] = config.get("drive_folder_ids", [])
@@ -763,6 +776,15 @@ def analyze_with_vertexai(state: AnalysisState) -> AnalysisState:
             }
         )
 
+    # Get level criteria if level is specified (include next level for growth areas)
+    level = state.get("level")
+    level_criteria = ""
+    if level:
+        ladder_file = Path(__file__).parent.parent.parent.parent / "ladder" / "Matrix.html"
+        level_criteria = format_level_criteria_for_prompt(
+            level, ladder_file, include_next_level=True
+        )
+
     # Build prompt with template
     ANALYSIS_SYSTEM_PROMPT = """You are an expert at analyzing technical design documents for engineering performance evaluation.
 
@@ -780,6 +802,10 @@ Also evaluate:
 - Team engagement: comment volume, discussion depth, collaboration patterns
 
 Be specific, provide examples, and focus on actionable insights for improving technical documentation and design review processes."""
+
+    # Append level criteria if available
+    if level_criteria:
+        ANALYSIS_SYSTEM_PROMPT += f"\n\n{level_criteria}"
 
     # Render prompt template with data
     user_prompt = prompt_template.render(
@@ -958,6 +984,7 @@ def run(
         "config_path": config_path,
         "username": username,
         "name": None,
+        "level": None,  # Will be loaded from config
         "start_date": "",
         "end_date": "",
         "analysis_period": "",

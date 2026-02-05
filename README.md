@@ -74,6 +74,7 @@ Create a centralized `config.json` at the repository root:
       "username": "varunsundar",
       "email": "varun.sundar@evolutioniq.com",
       "name": "Varun Sundar",
+      "level": "L4",
       "account_id": "712020:9b24a504-5186-4db2-a263-2f66398ba887"
     }
   ]
@@ -82,13 +83,32 @@ Create a centralized `config.json` at the repository root:
 
 **Note:** 
 - The `email` field is used for both JIRA and Google Drive authentication. Use the same email for both.
+- The `level` field (e.g., "L4", "L5") is used to include level-specific evaluation criteria from the organizational ladder in analysis prompts. This ensures evaluations are aligned with expectations for the engineer's level.
 - `drive_folder_ids` and `document_types` are optional (deprecated). By default, Google Docs analysis searches all documents owned by the user.
+
+## Level-Based Evaluation
+
+All analysis tools support level-based evaluation using criteria from the organizational ladder (`ladder/Matrix.html`). When a `level` field (e.g., "L4", "L5") is specified in `config.json`, the analysis prompts automatically include:
+
+1. **Current Level Criteria**: Primary evaluation expectations for the engineer's current level
+2. **Next Level Growth Areas**: Criteria for the next level (e.g., L6 for an L5 engineer) to identify promotion readiness and development opportunities
+
+This dual approach ensures:
+- Evaluations are aligned with the engineer's current level expectations
+- Growth areas are clearly identified for promotion readiness
+- Actionable feedback focuses on both meeting current level and developing toward next level
+
+The ladder criteria cover:
+- **Technical skills**: Code quality, testing, debugging, observability, architecture
+- **Delivery**: Work breakdown, prioritization, accountability, tradeoffs
+- **Feedback, Communication, Collaboration**: Feedback delivery, communication, knowledge sharing, team support
+- **Leadership**: Process thinking, influence, mentoring, strategy
 
 ## Tools
 
 ### GitHub PR Review Analysis
 
-Analyzes PR review contributions, comment quality, and cross-boundary work.
+Analyzes PR review contributions, comment quality, and cross-boundary work. Evaluations are tailored to the engineer's level when specified in config.
 
 ```bash
 # Using slugified name (recommended)

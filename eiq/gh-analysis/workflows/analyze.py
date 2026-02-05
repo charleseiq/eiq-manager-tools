@@ -35,6 +35,17 @@ from jinja2 import Template  # noqa: E402
 from langchain_core.messages import HumanMessage, SystemMessage  # noqa: E402
 from langgraph.graph import END, StateGraph  # noqa: E402
 
+# Import ladder utilities for level-based evaluation
+try:
+    from eiq.shared.ladder_utils import format_level_criteria_for_prompt
+except ImportError:
+    # Fallback if ladder utils not available
+    def format_level_criteria_for_prompt(
+        level: str, ladder_file: Path | None = None, include_next_level: bool = True
+    ) -> str:
+        return ""
+
+
 # Try to import rich for better progress display, fallback to simple prints
 try:
     from rich.console import Console
@@ -76,6 +87,7 @@ class AnalysisState(TypedDict):
     # Input
     username: str | None
     organization: str
+    level: str | None  # Engineer level (e.g., "L4", "L5") for evaluation criteria
     start_date: str
     end_date: str
     analysis_period: str
@@ -413,6 +425,7 @@ def load_config(state: AnalysisState) -> AnalysisState:
     state["start_date"] = config.get("start_date", "2025-07-01")
     state["end_date"] = config.get("end_date", "2025-12-31")
     state["analysis_period"] = _format_analysis_period(state["start_date"], state["end_date"])
+    state["level"] = config.get("level")  # Store level for evaluation criteria
 
     # Use output_dir from state (passed from CLI), fallback to config file's parent directory
     if "output_dir" not in state or not state["output_dir"]:
@@ -689,6 +702,15 @@ def analyze_with_vertexai(state: AnalysisState) -> AnalysisState:
     with open(PROMPT_TEMPLATE_PATH) as f:
         prompt_template = Template(f.read())
 
+    # Get level criteria if level is specified (include next level for growth areas)
+    level = state.get("level")
+    level_criteria = ""
+    if level:
+        ladder_file = Path(__file__).parent.parent.parent.parent / "ladder" / "Matrix.html"
+        level_criteria = format_level_criteria_for_prompt(
+            level, ladder_file, include_next_level=True
+        )
+
     # Build prompt with template
     ANALYSIS_SYSTEM_PROMPT = """
     You are an expert at analyzing GitHub PR reviews for engineering performance evaluation.
@@ -697,6 +719,10 @@ def analyze_with_vertexai(state: AnalysisState) -> AnalysisState:
 
     Be specific, provide examples, and focus on actionable insights.
     """
+
+    # Append level criteria if available
+    if level_criteria:
+        ANALYSIS_SYSTEM_PROMPT += f"\n\n{level_criteria}"
 
     # Render prompt template with data
     user_prompt = prompt_template.render(
@@ -921,6 +947,7 @@ def run(
         "config_path": config_path,
         "username": username or "",  # Only used for centralized config
         "organization": "",  # Will be loaded from config
+        "level": None,  # Will be loaded from config
         "start_date": "",  # Will be loaded from config
         "end_date": "",  # Will be loaded from config
         "analysis_period": "",  # Will be generated from dates

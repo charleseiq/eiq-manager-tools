@@ -55,13 +55,18 @@ Add users to `config.json`:
       "username": "varunsundar",
       "email": "varun.sundar@evolutioniq.com",
       "name": "Varun Sundar",
+      "level": "L4",
       "account_id": "712020:9b24a504-5186-4db2-a263-2f66398ba887"
     }
   ]
 }
 ```
 
-**Note:** The `email` field is used for JIRA assignee queries. Use the same email as your JIRA account.
+**Notes:** 
+- The `email` field is used for JIRA assignee queries. Use the same email as your JIRA account.
+- The `level` field (e.g., "L4", "L5") is optional but recommended. When specified, analysis includes:
+  - **Current level criteria**: Primary evaluation expectations for the engineer's current level
+  - **Next level growth areas**: Criteria for the next level to identify promotion readiness and development opportunities
 
 ## Usage
 

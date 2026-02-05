@@ -47,11 +47,16 @@ Add users to `config.json`:
     {
       "username": "varunsundar",
       "email": "varun.sundar@evolutioniq.com",
-      "name": "Varun Sundar"
+      "name": "Varun Sundar",
+      "level": "L4"
     }
   ]
 }
 ```
+
+**Note:** The `level` field (e.g., "L4", "L5") is optional but recommended. When specified, analysis includes:
+- **Current level criteria**: Primary evaluation expectations for the engineer's current level
+- **Next level growth areas**: Criteria for the next level to identify promotion readiness and development opportunities
 
 ## Usage
 

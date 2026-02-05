@@ -36,6 +36,17 @@ from jinja2 import Template  # noqa: E402
 from langchain_core.messages import HumanMessage, SystemMessage  # noqa: E402
 from langgraph.graph import END, StateGraph  # noqa: E402
 
+# Import ladder utilities for level-based evaluation
+try:
+    from eiq.shared.ladder_utils import format_level_criteria_for_prompt
+except ImportError:
+    # Fallback if ladder utils not available
+    def format_level_criteria_for_prompt(
+        level: str, ladder_file: Path | None = None, include_next_level: bool = True
+    ) -> str:
+        return ""
+
+
 # Try to import rich for better progress display, fallback to simple prints
 try:
     from rich.console import Console
@@ -79,6 +90,7 @@ class AnalysisState(TypedDict):
     user_email: str | None  # User's email from config (for assignee queries)
     name: str | None  # User's display name (for output directory)
     account_id: str | None  # JIRA account ID (different from username)
+    level: str | None  # Engineer level (e.g., "L4", "L5") for evaluation criteria
     jira_url: str
     jira_project: str | None  # JIRA project key (required for unbounded query prevention)
     start_date: str
@@ -501,6 +513,7 @@ def load_config(state: AnalysisState) -> AnalysisState:
     # Don't override it here - it should come from CLI/env vars
     state["name"] = config.get("name", state.get("name"))  # Store name for output directory
     state["account_id"] = config.get("account_id", state.get("account_id"))
+    state["level"] = config.get("level")  # Store level for evaluation criteria
     state["jira_url"] = jira_url.rstrip("/")
     state["jira_project"] = (
         config.get("jira_project") or state.get("jira_project") or os.getenv("JIRA_PROJECT", "")
@@ -1152,12 +1165,25 @@ def analyze_with_vertexai(state: AnalysisState) -> AnalysisState:
     with open(PROMPT_TEMPLATE_PATH) as f:
         prompt_template = Template(f.read())
 
+    # Get level criteria if level is specified (include next level for growth areas)
+    level = state.get("level")
+    level_criteria = ""
+    if level:
+        ladder_file = Path(__file__).parent.parent.parent.parent / "ladder" / "Matrix.html"
+        level_criteria = format_level_criteria_for_prompt(
+            level, ladder_file, include_next_level=True
+        )
+
     # Build prompt with template
     ANALYSIS_SYSTEM_PROMPT = """You are an expert at analyzing JIRA sprint and epic data for engineering performance evaluation.
 
 Your task is to analyze sprint metrics, velocity, epic allocation, and worklog data to generate a comprehensive markdown report.
 
 Be specific, provide examples, and focus on actionable insights for sprint planning, velocity tracking, and time allocation."""
+
+    # Append level criteria if available
+    if level_criteria:
+        ANALYSIS_SYSTEM_PROMPT += f"\n\n{level_criteria}"
 
     # Limit data to avoid token limits - summarize instead of sending everything
     # Only send key fields from a subset of issues
@@ -2017,6 +2043,7 @@ def run(
         "user_email": None,  # Will be populated from config in load_config (for assignee queries)
         "name": None,  # Will be populated from config in load_config
         "account_id": None,
+        "level": None,  # Will be populated from config in load_config
         "jira_url": resolved_jira_url,  # Pass JIRA_URL to state
         "jira_project": resolved_jira_project,  # Pass JIRA_PROJECT to state
         "start_date": "",

@@ -74,7 +74,8 @@ If you prefer manual setup or need to use a different authentication method:
     {
       "username": "varunsundar",
       "email": "varun.sundar@evolutioniq.com",
-      "name": "Varun Sundar"
+      "name": "Varun Sundar",
+      "level": "L4"
     }
   ],
   "drive_folder_ids": [
@@ -95,6 +96,9 @@ If you prefer manual setup or need to use a different authentication method:
 - During OAuth flow, authenticate with the same Google account as this email
 - **By default, all Google Docs owned by the user are searched** - no `drive_folder_ids` or `document_types` needed
 - Only documents where the user is an owner are included in the analysis
+- The `level` field (e.g., "L4", "L5") is optional but recommended. When specified, analysis includes:
+  - **Current level criteria**: Primary evaluation expectations for the engineer's current level
+  - **Next level growth areas**: Criteria for the next level to identify promotion readiness and development opportunities
 - If `drive_folder_ids` is specified, only those folders will be searched (legacy behavior, deprecated)
 - If `document_types` is specified with `drive_folder_ids`, only documents matching those name patterns will be included (deprecated)
 
