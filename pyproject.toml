@@ -16,6 +16,10 @@ dependencies = [
     "rich>=13.0.0",
     "python-dotenv>=1.0.0",
     "atlassian-python-api>=3.41.0",
+    "google-auth>=2.23.0",
+    "google-auth-oauthlib>=1.1.0",
+    "google-auth-httplib2>=0.1.1",
+    "google-api-python-client>=2.100.0",
 ]
 
 [project.optional-dependencies]
@@ -56,18 +60,18 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.ruff.lint.isort]
-known-first-party = ["pr-review-analysis", "jira-analysis", "shared"]
+known-first-party = ["eiq.gh-analysis", "eiq.jira-analysis", "eiq.gdocs-analysis", "eiq.shared"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-pythonpath = ["."]
+pythonpath = [".", "eiq"]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=pr-review-analysis",
+    "--cov=eiq.gh-analysis",
     "--cov-report=term-missing",
     "--cov-report=html",
 ]

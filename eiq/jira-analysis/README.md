@@ -107,4 +107,4 @@ Reports are saved to `reports/<slugified-name>/<period>/jira-analysis.md` and in
 ## See Also
 
 - [Main README](../README.md) - Overall project documentation
-- [GitHub Analysis](../pr-review-analysis/README.md) - Similar analysis for GitHub PRs
+- [GitHub Analysis](../gh-analysis/README.md) - Similar analysis for GitHub PRs

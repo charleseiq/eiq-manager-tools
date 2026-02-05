@@ -41,7 +41,7 @@ See the main [README.md](../README.md) for full documentation.
 ## Structure
 
 ```
-pr-review-analysis/
+eiq/gh-analysis/
 ├── workflows/          # LangGraph workflow implementation
 │   ├── analyze.py     # Main workflow logic
 │   └── __init__.py    # Package initialization

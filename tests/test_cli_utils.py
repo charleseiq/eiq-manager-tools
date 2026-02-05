@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.cli_utils import (
+from eiq.shared.cli_utils import (
     determine_output_dir,
     parse_period,
     resolve_time_range,

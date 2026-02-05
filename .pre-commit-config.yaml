@@ -11,7 +11,7 @@ repos:
         entry: uv run ruff check --fix --exit-non-zero-on-fix
         language: system
         types: [python]
-        files: ^(shared/|pr-review-analysis/|jira-analysis/|gh-analyze|jira-analyze|tests/)
+        files: ^(eiq/|scripts/|tests/)
         pass_filenames: true
       
       - id: ruff-format
@@ -19,7 +19,7 @@ repos:
         entry: uv run ruff format
         language: system
         types: [python]
-        files: ^(shared/|pr-review-analysis/|jira-analysis/|gh-analyze|jira-analyze|tests/)
+        files: ^(eiq/|scripts/|tests/)
         pass_filenames: true
       
       - id: ty-check
@@ -27,7 +27,7 @@ repos:
         entry: uv run ty check
         language: system
         types: [python]
-        files: ^(shared/|pr-review-analysis/|jira-analysis/|gh-analyze|jira-analyze)
+        files: ^(eiq/|scripts/)
         exclude: ^(tests/|\.venv/)
         pass_filenames: true
       
@@ -38,11 +38,3 @@ repos:
         types: [python]
         pass_filenames: false
         always_run: false
-      
-      - id: convert-pdfs-to-markdown
-        name: Convert PDFs to Markdown
-        entry: bash -c 'for pdf in "$@"; do markitdown "$pdf" > "${pdf%.pdf}.md" && git add "${pdf%.pdf}.md"; done' --
-        language: system
-        types: [file]
-        files: \.pdf$
-        pass_filenames: true

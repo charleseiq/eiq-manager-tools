@@ -62,13 +62,13 @@ except ImportError:
     pass
 
 # Import shared utilities
-sys.path.insert(0, str(Path(__file__).parent))
-from shared.cli_utils import (
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from eiq.shared.cli_utils import (
     determine_output_dir,
     resolve_time_range,
     resolve_user_identity,
 )
-from shared.config_utils import (
+from eiq.shared.config_utils import (
     create_jira_config,
     load_centralized_config,
 )
@@ -117,9 +117,9 @@ def _determine_config_file(
 ) -> Path:
     """Determine which config file to use."""
     if centralized_config:
-        # Use centralized config.json
+        # Use centralized config.json (in parent directory)
         script_dir = Path(__file__).parent
-        return script_dir / "config.json"
+        return script_dir.parent / "config.json"
     else:
         # Create individual config file
         return create_jira_config(username, start_date, end_date, Path(output_dir))
@@ -141,14 +141,12 @@ def _run_workflow(
     """Import and run the JIRA analysis workflow."""
     try:
         # Import the workflow module
-        import sys
-
         sys.path.insert(0, str(script_dir))
 
         # Import using importlib to handle hyphenated module name
         import importlib.util
 
-        analyze_path = script_dir / "jira-analysis" / "workflows" / "analyze.py"
+        analyze_path = script_dir.parent / "eiq" / "jira-analysis" / "workflows" / "analyze.py"
         spec = importlib.util.spec_from_file_location("jira_analyze", analyze_path)
         if spec is None or spec.loader is None:
             raise ImportError(f"Could not load module from {analyze_path}")
@@ -249,7 +247,7 @@ def main():
 
     # Load config if it exists
     script_dir = Path(__file__).parent
-    config_file_path = script_dir / "config.json"
+    config_file_path = script_dir.parent / "config.json"
     config_data = load_centralized_config(config_file_path)
     centralized_config = config_data is not None
 

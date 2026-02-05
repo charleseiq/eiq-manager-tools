@@ -6,7 +6,7 @@ This package provides common functionality used by both gh-analyze and jira-anal
 - Configuration utilities (config loading, creation)
 """
 
-from shared.cli_utils import (
+from .cli_utils import (
     determine_output_dir,
     parse_period,
     resolve_time_range,
@@ -14,7 +14,7 @@ from shared.cli_utils import (
     slugify,
     unslugify,
 )
-from shared.config_utils import (
+from .config_utils import (
     create_github_config,
     create_jira_config,
     format_analysis_period,

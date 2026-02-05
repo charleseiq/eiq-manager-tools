@@ -85,7 +85,7 @@ def mock_rich_available():
     """Mock rich library availability."""
     import importlib.util
 
-    analyze_path = Path(__file__).parent.parent / "pr-review-analysis" / "workflows" / "analyze.py"
+    analyze_path = Path(__file__).parent.parent / "eiq" / "gh-analysis" / "workflows" / "analyze.py"
     spec = importlib.util.spec_from_file_location("analyze", analyze_path)
     analyze_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(analyze_module)
@@ -98,7 +98,7 @@ def mock_rich_unavailable():
     """Mock rich library unavailability."""
     import importlib.util
 
-    analyze_path = Path(__file__).parent.parent / "pr-review-analysis" / "workflows" / "analyze.py"
+    analyze_path = Path(__file__).parent.parent / "eiq" / "gh-analysis" / "workflows" / "analyze.py"
     spec = importlib.util.spec_from_file_location("analyze", analyze_path)
     analyze_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(analyze_module)

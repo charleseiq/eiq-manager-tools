@@ -1,5 +1,5 @@
 ---
-name: pr-review-analysis
+name: gh-analysis
 description: Analyzes GitHub PR review quality by classifying comments (Architecture/Logic/Nits), scoring PR descriptions, identifying cross-boundary contributions, analyzing conflict management, and summarizing significant changes. Use when analyzing PR review performance, generating review quality reports, or evaluating code review effectiveness for team members.
 ---
 
@@ -19,14 +19,14 @@ The CLI handles all workflow execution internally.
 
 ## Implementation
 
-All implementation code is located in `pr-review-analysis/` at the repository root:
+All implementation code is located in `eiq/gh-analysis/`:
 
-- **Workflows**: `pr-review-analysis/workflows/` - LangGraph workflow implementation
-- **Scripts**: `pr-review-analysis/scripts/` - Utility scripts for data fetching
-- **Templates**: `pr-review-analysis/templates/` - Report templates
-- **Documentation**: `pr-review-analysis/docs/` - Detailed documentation
+- **Workflows**: `eiq/gh-analysis/workflows/` - LangGraph workflow implementation
+- **Templates**: `eiq/gh-analysis/templates/` - Report templates
+- **Documentation**: `eiq/gh-analysis/docs/` - Detailed documentation
+- **CLI**: `scripts/gh-analyze` - Command-line entry point
 
-See `pr-review-analysis/README.md` for full documentation.
+See `eiq/gh-analysis/README.md` for full documentation.
 
 ## What Gets Analyzed
 

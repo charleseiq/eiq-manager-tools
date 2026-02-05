@@ -125,7 +125,7 @@ setup:
     fi
     @echo ""
     @echo "4. Checking template file..."
-    @if [ -f "pr-review-analysis/templates/gh-analysis.jinja2.md" ]; then \
+    @if [ -f "eiq/gh-analysis/templates/gh-analysis.jinja2.md" ]; then \
         echo "✓ Template file exists"; \
     else \
         echo "❌ Template file not found"; \

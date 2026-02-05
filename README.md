@@ -161,7 +161,7 @@ just format
 uv run pytest
 
 # Run with coverage
-uv run pytest --cov=pr-review-analysis --cov-report=html
+uv run pytest --cov=eiq.gh-analysis --cov-report=html
 
 # Run specific test
 uv run pytest tests/test_analyze_helpers.py
@@ -227,7 +227,7 @@ load_config → fetch_github → analyze → generate → save → END
 - **generate**: Generates markdown report from analysis
 - **save**: Saves report to file system
 
-See `pr-review-analysis/workflows/analyze.py` for implementation details.
+See `eiq/gh-analysis/workflows/analyze.py` for implementation details.
 
 ## Troubleshooting
 
@@ -257,21 +257,24 @@ just auth  # Run Google Cloud authentication
 
 ```
 .
-├── gh-analyze              # GitHub PR analysis CLI entry point
-├── jira-analyze            # JIRA sprint/epic analysis CLI entry point
+├── scripts/                # CLI entry points
+│   ├── gh-analyze          # GitHub PR analysis CLI
+│   ├── jira-analyze        # JIRA sprint/epic analysis CLI
+│   └── gdocs-analyze       # Google Docs analysis CLI
 ├── config.json             # Centralized configuration
 ├── justfile                # Convenience commands
 ├── pyproject.toml          # Python dependencies
-├── shared/                 # Shared CLI utilities
-│   ├── cli_utils.py        # Common functions (slugify, period parsing, etc.)
-│   └── config_utils.py     # Configuration file handling
-├── pr-review-analysis/     # GitHub PR analysis package
-│   ├── workflows/
-│   │   └── analyze.py      # LangGraph workflow
-│   └── templates/
-│       ├── gh-analysis.jinja2.md
-│       └── prompt.jinja2.md
-├── jira-analysis/          # JIRA analysis package
+├── eiq/                    # Analysis modules
+│   ├── shared/             # Shared CLI utilities
+│   │   ├── cli_utils.py    # Common functions (slugify, period parsing, etc.)
+│   │   └── config_utils.py # Configuration file handling
+│   ├── gh-analysis/        # GitHub PR analysis package
+│   │   ├── workflows/
+│   │   │   └── analyze.py  # LangGraph workflow
+│   │   └── templates/
+│   │       ├── gh-analysis.jinja2.md
+│   │       └── prompt.jinja2.md
+│   ├── jira-analysis/      # JIRA analysis package
 │   ├── workflows/
 │   │   └── analyze.py      # LangGraph workflow
 │   └── templates/

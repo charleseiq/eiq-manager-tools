@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 # Import analyze module directly from file path (handles hyphenated directory name)
-analyze_path = Path(__file__).parent.parent / "pr-review-analysis" / "workflows" / "analyze.py"
+analyze_path = Path(__file__).parent.parent / "eiq" / "gh-analysis" / "workflows" / "analyze.py"
 spec = importlib.util.spec_from_file_location("analyze", analyze_path)
 analyze = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(analyze)

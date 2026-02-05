@@ -1459,7 +1459,8 @@ Be honest and nuanced - not all completed tickets represent delivered value."""
             response.content if hasattr(response, "content") else str(response)
         )
         # Clean up any markdown code blocks if LLM added them
-        accomplishments_summary = accomplishments_summary.strip()
+        # Ensure it's a string (response.content might be other types)
+        accomplishments_summary = str(accomplishments_summary).strip()
         if accomplishments_summary.startswith("```"):
             # Remove markdown code blocks
             lines = accomplishments_summary.split("\n")

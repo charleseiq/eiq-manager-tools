@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""
+Google Docs Analysis CLI
+
+Analyze Google Docs technical design documents for a user using LangGraph workflow and Vertex AI.
+
+Usage:
+    gdocs-analyze -n <name> -p <period> [options]
+    gdocs-analyze -u <username> -s <start-date> -e <end-date> [options]
+    gdocs-analyze -n <name> -s <start-date> -e <end-date> [options]
+    gdocs-analyze -u <username> -p <period> [options]
+
+Examples:
+    # Using slugified name and period (RECOMMENDED - no quotes needed!)
+    gdocs-analyze -n varun-sundar -p 2025H2          # Second half of 2025
+    gdocs-analyze -n ariel-ledesma -p 2025H1        # First half of 2025
+    gdocs-analyze -n erin-friesen -p 2026Q1         # First quarter of 2026
+    gdocs-analyze -n varun-sundar -p 2025            # Full year 2025
+
+    # Alternative: Using full name (requires quotes for spaces)
+    gdocs-analyze -n "Varun Sundar" -p 2025H2
+
+    # Using username and dates
+    gdocs-analyze -u user@example.com -s 2025-07-01 -e 2025-12-31
+
+Options:
+    -n, --name NAME       Person's name in slugified format (e.g., varun-sundar).
+                          Full names with spaces (e.g., "Varun Sundar") are also
+                          supported but require quotes. Slugified format is recommended.
+    -u, --username USERNAME   Email or username
+    -p, --period PERIOD   Period string: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY
+                          (e.g., "2025H2", "2026Q1", "2025")
+    -s, --start DATE      Start date (YYYY-MM-DD)
+    -e, --end DATE        End date (YYYY-MM-DD)
+    -o, --output DIR      Output directory (default: reports/<slugified-name>/<period>)
+    --project PROJECT     Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)
+    --location LOCATION   Vertex AI location (default: us-east4)
+
+Note: Provide either (name OR username) AND (period OR start+end dates)
+
+Configuration:
+    When using centralized config.json, add drive_folder_ids and document_types at the top level:
+    {
+      "organization": "EvolutionIQ",
+      "drive_folder_ids": ["folder_id_1", "folder_id_2"],
+      "document_types": ["Technical Design Doc", "TDD", "Design Document"],
+      "users": [
+        {
+          "username": "user",
+          "email": "user@example.com",  # Same email used for JIRA
+          "name": "User Name"
+        }
+      ]
+    }
+
+    The email field in config.json is used for Google Drive authentication.
+    During OAuth flow, authenticate with the same Google account as this email.
+
+Google Drive Setup:
+    1. Go to Google Cloud Console
+    2. Create a project or select existing one
+    3. Enable Google Drive API
+    4. Create OAuth 2.0 credentials (Desktop app)
+    5. Download credentials.json and place in ~/.config/gdocs-analysis/credentials.json
+"""
+
+import argparse
+import os
+import sys
+import traceback
+from pathlib import Path
+
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    # python-dotenv not installed, skip loading .env
+    pass
+
+# Import shared utilities
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from eiq.shared.cli_utils import (
+    determine_output_dir,
+    resolve_time_range,
+    resolve_user_identity,
+)
+from eiq.shared.config_utils import (
+    load_centralized_config,
+)
+
+
+def _resolve_user_identity(
+    name: str | None,
+    username: str | None,
+    config_data: dict | None,
+    parser: argparse.ArgumentParser,
+) -> tuple[str | None, str]:
+    """Resolve user's name and username from CLI arguments and config."""
+    return resolve_user_identity(name, username, config_data, parser, prefer_email=False)
+
+
+def _print_analysis_summary(
+    username: str,
+    name: str | None,
+    start_date: str,
+    end_date: str,
+    period_key: str,
+    output_dir: str,
+):
+    """Print analysis configuration summary."""
+    print("\n" + "=" * 60)
+    print("Google Docs Analysis Configuration")
+    print("=" * 60)
+    if name:
+        print(f"Name:        {name}")
+    print(f"Username:    {username}")
+    print(f"Period:      {period_key}")
+    print(f"Date Range:  {start_date} to {end_date}")
+    print(f"Output:      {output_dir}")
+    print("=" * 60 + "\n")
+
+
+def _run_workflow(
+    script_dir: Path,
+    config_file: Path,
+    vertexai_project: str,
+    vertexai_location: str,
+    username: str,
+    period_key: str,
+    output_dir: str,
+):
+    """Import and run the Google Docs analysis workflow."""
+    try:
+        # Import the workflow module
+        import importlib.util
+
+        analyze_path = script_dir.parent / "eiq" / "gdocs-analysis" / "workflows" / "analyze.py"
+        spec = importlib.util.spec_from_file_location("gdocs_analyze", analyze_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module from {analyze_path}")
+        gdocs_analyze_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gdocs_analyze_module)
+        run = gdocs_analyze_module.run
+
+        # Run the workflow
+        run(
+            config_path=str(config_file),
+            vertexai_project=vertexai_project,
+            vertexai_location=vertexai_location,
+            username=username,
+            period=period_key,
+            output_dir=output_dir,
+        )
+    except ImportError as e:
+        print(f"❌ Error importing workflow: {e}")
+        print("Make sure gdocs-analysis package is installed correctly.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error running workflow: {e}")
+        traceback.print_exc()
+        raise
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Analyze Google Docs technical design documents for a user",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+
+    # Name/username options
+    identity_group = parser.add_mutually_exclusive_group(required=False)
+    identity_group.add_argument(
+        "-n",
+        "--name",
+        help="Person's name in slugified format (e.g., varun-sundar). Full names with spaces require quotes.",
+    )
+    identity_group.add_argument("-u", "--username", help="Email or username")
+
+    # Period/date options
+    period_group = parser.add_mutually_exclusive_group(required=False)
+    period_group.add_argument(
+        "-p",
+        "--period",
+        help="Period string: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., '2025H2', '2026Q1', '2025')",
+    )
+    period_group.add_argument("-s", "--start", help="Start date (YYYY-MM-DD)")
+
+    parser.add_argument(
+        "-e", "--end", help="End date (YYYY-MM-DD). Required if --start is provided."
+    )
+
+    # Output
+    parser.add_argument(
+        "-o", "--output", help="Output directory (default: reports/<slugified-name>/<period>)"
+    )
+
+    # Credentials
+    parser.add_argument(
+        "--project", help="Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)"
+    )
+    parser.add_argument(
+        "--location", help="Vertex AI location (default: us-east4)", default="us-east4"
+    )
+
+    args = parser.parse_args()
+
+    # Validate required arguments
+    if not args.name and not args.username:
+        parser.error("Must provide either -n/--name or -u/--username")
+
+    if not args.period and not (args.start and args.end):
+        parser.error("Must provide either -p/--period or both --start and --end")
+
+    if args.start and not args.end:
+        parser.error("--end is required when --start is provided")
+
+    # Load config if it exists
+    script_dir = Path(__file__).parent
+    config_file_path = script_dir.parent / "config.json"
+    config_data = load_centralized_config(config_file_path)
+    centralized_config = config_data is not None
+
+    # Resolve name and username
+    name, username = _resolve_user_identity(args.name, args.username, config_data, parser)
+
+    # Resolve period and dates
+    period_key, start_date, end_date = resolve_time_range(
+        args.period, args.start, args.end, config_data, parser
+    )
+
+    # Validate credentials
+    vertexai_project = args.project or os.getenv("GOOGLE_CLOUD_PROJECT")
+
+    if not vertexai_project:
+        parser.error(
+            "Google Cloud project required. Set --project or GOOGLE_CLOUD_PROJECT environment variable"
+        )
+
+    # Determine output directory
+    output_dir = determine_output_dir(args.output, name, username, period_key)
+
+    # Display analysis summary
+    _print_analysis_summary(username, name, start_date, end_date, period_key, output_dir)
+
+    # Determine config file (centralized or individual)
+    if centralized_config:
+        config_file = config_file_path
+        # Check if drive_folder_ids are configured
+        if config_data and not config_data.get("drive_folder_ids"):
+            print("⚠️  Warning: drive_folder_ids not found in centralized config")
+            print(f"   Please add drive_folder_ids to {config_file}")
+            print('   Example: {"drive_folder_ids": ["folder_id_1", "folder_id_2"]}')
+            sys.exit(1)
+    else:
+        # Create individual config file in output directory
+        config_file = Path(output_dir) / "config.json"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        if not config_file.exists():
+            import json
+
+            config = {
+                "email": username,  # Use email field (same as JIRA)
+                "start_date": start_date,
+                "end_date": end_date,
+                "drive_folder_ids": [],  # User needs to fill this in
+                "document_types": ["Technical Design Doc", "TDD", "Design Document"],
+            }
+            with open(config_file, "w") as f:
+                json.dump(config, f, indent=2)
+            print(f"⚠️  Created config file: {config_file}")
+            print("   Please add drive_folder_ids to the config file before running again.")
+            sys.exit(1)
+
+    # Import and run workflow
+    if vertexai_project is None:
+        parser.error("Google Cloud project is required")
+    assert vertexai_project is not None
+    _run_workflow(
+        script_dir,
+        config_file,
+        vertexai_project,
+        args.location,
+        username,
+        period_key,
+        output_dir,
+    )
+
+
+if __name__ == "__main__":
+    main()

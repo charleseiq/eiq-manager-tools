@@ -63,13 +63,13 @@ except ImportError:
     pass
 
 # Import shared utilities
-sys.path.insert(0, str(Path(__file__).parent))
-from shared.cli_utils import (
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from eiq.shared.cli_utils import (
     determine_output_dir,
     resolve_time_range,
     resolve_user_identity,
 )
-from shared.config_utils import (
+from eiq.shared.config_utils import (
     create_github_config,
     load_centralized_config,
     user_exists_in_config,
@@ -149,7 +149,7 @@ def main():
 
     # Load centralized config if it exists
     script_dir = Path(__file__).parent
-    centralized_config = script_dir / "config.json"
+    centralized_config = script_dir.parent / "config.json"
     config_data = load_centralized_config(centralized_config)
 
     # Resolve name and username
@@ -231,7 +231,7 @@ def _run_workflow(
     output_dir: str,
 ) -> None:
     """Import and execute the LangGraph workflow."""
-    workflow_dir = script_dir / "pr-review-analysis" / "workflows"
+    workflow_dir = script_dir.parent / "eiq" / "gh-analysis" / "workflows"
     sys.path.insert(0, str(workflow_dir))
 
     from analyze import run  # type: ignore[import-untyped]
