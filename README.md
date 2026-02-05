@@ -165,6 +165,9 @@ uv run pytest --cov=pr-review-analysis --cov-report=html
 
 # Run specific test
 uv run pytest tests/test_analyze_helpers.py
+
+# Run specific test function
+uv run pytest tests/test_analyze_helpers.py::TestFormatAnalysisPeriod::test_h2_period
 ```
 
 ### Code Quality
@@ -173,12 +176,42 @@ uv run pytest tests/test_analyze_helpers.py
 # Lint code
 uv run ruff check .
 
+# Auto-fix linting issues
+uv run ruff check --fix .
+
 # Format code
 uv run ruff format .
 
 # Type checking
-uv run mypy pr-review-analysis
+uv run ty check .
 ```
+
+### Pre-commit Hooks
+
+The project uses pre-commit hooks to automatically run linting, type checking, and tests before commits.
+
+```bash
+# Install pre-commit hooks
+pre-commit install
+
+# Run pre-commit hooks manually
+pre-commit run --all-files
+```
+
+### Test Structure
+
+- `tests/test_analyze_helpers.py` - Tests for helper functions (`_format_analysis_period`, `_parse_github_date`, `_extract_pr_info`, `_filter_reviews_by_user_and_date`)
+- `tests/test_analyze_load_config.py` - Tests for `load_config` function
+- `tests/conftest.py` - Pytest fixtures and configuration
+
+### Writing New Tests
+
+When adding new functions, add corresponding tests:
+
+1. Create test functions in the appropriate test file
+2. Use descriptive test names: `test_<function_name>_<scenario>`
+3. Use fixtures from `conftest.py` when possible
+4. Mock external dependencies (GitHub API, Vertex AI) using `pytest-mock`
 
 ## Architecture
 
@@ -224,15 +257,26 @@ just auth  # Run Google Cloud authentication
 
 ```
 .
-├── gh-analyze              # Main CLI entry point
+├── gh-analyze              # GitHub PR analysis CLI entry point
+├── jira-analyze            # JIRA sprint/epic analysis CLI entry point
 ├── config.json             # Centralized configuration
 ├── justfile                # Convenience commands
 ├── pyproject.toml          # Python dependencies
-├── pr-review-analysis/     # Core package
+├── shared/                 # Shared CLI utilities
+│   ├── cli_utils.py        # Common functions (slugify, period parsing, etc.)
+│   └── config_utils.py     # Configuration file handling
+├── pr-review-analysis/     # GitHub PR analysis package
 │   ├── workflows/
 │   │   └── analyze.py      # LangGraph workflow
 │   └── templates/
-│       └── gh-analysis.jinja2.md
+│       ├── gh-analysis.jinja2.md
+│       └── prompt.jinja2.md
+├── jira-analysis/          # JIRA analysis package
+│   ├── workflows/
+│   │   └── analyze.py      # LangGraph workflow
+│   └── templates/
+│       ├── jira-analysis.jinja2.md
+│       └── prompt.jinja2.md
 └── tests/                  # Test suite
 ```
 

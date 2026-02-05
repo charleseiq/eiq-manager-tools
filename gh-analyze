@@ -16,21 +16,21 @@ Examples:
     gh-analyze -n ariel-ledesma -p 2025H1        # First half of 2025
     gh-analyze -n erin-friesen -p 2026Q1         # First quarter of 2026
     gh-analyze -n varun-sundar -p 2025           # Full year 2025
-    
+
     # Alternative: Using full name (requires quotes for spaces)
     gh-analyze -n "Varun Sundar" -p 2025H2
-    
+
     # Using username and dates
     gh-analyze -u varunsundar -s 2025-07-01 -e 2025-12-31
     gh-analyze -u ariel-ledesma-eiq -s 2025-07-01 -e 2025-12-31
-    
+
     # Mixed: slugified name with dates, or username with period
     gh-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
     gh-analyze -u varunsundar -p 2025H2
 
 Options:
-    -n, --name NAME       Person's name in slugified format (e.g., varun-sundar). 
-                          Full names with spaces (e.g., "Varun Sundar") are also 
+    -n, --name NAME       Person's name in slugified format (e.g., varun-sundar).
+                          Full names with spaces (e.g., "Varun Sundar") are also
                           supported but require quotes. Slugified format is recommended.
     -u, --username USERNAME   GitHub username
     -p, --period PERIOD   Period string: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY
@@ -47,46 +47,33 @@ Note: Provide either (name OR username) AND (period OR start+end dates)
 """
 
 import argparse
-import json
 import os
-import re
 import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
 
 # Load environment variables from .env file if it exists
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     # python-dotenv not installed, skip loading .env
     pass
 
-
-def slugify(text: str) -> str:
-    """Convert text to a URL-friendly slug."""
-    # Convert to lowercase
-    text = text.lower()
-    # Replace spaces and underscores with hyphens
-    text = re.sub(r'[\s_]+', '-', text)
-    # Remove all non-alphanumeric characters except hyphens
-    text = re.sub(r'[^a-z0-9-]', '', text)
-    # Remove multiple consecutive hyphens
-    text = re.sub(r'-+', '-', text)
-    # Remove leading/trailing hyphens
-    text = text.strip('-')
-    return text
-
-
-def unslugify(slug: str) -> str:
-    """Convert a slug back to title case (e.g., 'varun-sundar' -> 'Varun Sundar')."""
-    if not slug:
-        return slug
-    # Split by hyphens and title case each word
-    words = slug.split('-')
-    return ' '.join(word.capitalize() for word in words if word)
+# Import shared utilities
+sys.path.insert(0, str(Path(__file__).parent))
+from shared.cli_utils import (
+    determine_output_dir,
+    resolve_time_range,
+    resolve_user_identity,
+)
+from shared.config_utils import (
+    create_github_config,
+    load_centralized_config,
+    user_exists_in_config,
+)
 
 
 def validate_date(date_str: str) -> str:
@@ -94,208 +81,29 @@ def validate_date(date_str: str) -> str:
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
         return date_str
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid date format: {date_str}. Use YYYY-MM-DD")
+    except ValueError as err:
+        raise argparse.ArgumentTypeError(
+            f"Invalid date format: {date_str}. Use YYYY-MM-DD"
+        ) from err
 
 
 def _resolve_user_identity(
-    name: Optional[str], username: Optional[str], config_data: Optional[dict], parser: argparse.ArgumentParser
-) -> Tuple[Optional[str], str]:
-    """Resolve name and username from arguments and config."""
-    resolved_name = name
-    resolved_username = username
-    
-    # If name looks like a slug (contains hyphens and no spaces), convert to title case
-    if resolved_name and '-' in resolved_name and ' ' not in resolved_name:
-        resolved_name = unslugify(resolved_name)
-    
-    if resolved_name and not resolved_username:
-        # Lookup username from name
-        if not config_data:
-            parser.error("Name provided but config.json not found. Use --username instead.")
-        
-        # Try exact match first (case-insensitive)
-        found_user = None
-        for user in config_data.get("users", []):
-            user_name = user.get("name", "")
-            if user_name.lower() == resolved_name.lower():
-                found_user = user
-                break
-        
-        # If not found, try matching against slugified version
-        if not found_user:
-            name_slug = slugify(resolved_name)
-            for user in config_data.get("users", []):
-                user_name = user.get("name", "")
-                if slugify(user_name) == name_slug:
-                    found_user = user
-                    resolved_name = user_name  # Use the canonical name from config
-                    break
-        
-        if found_user:
-            resolved_username = found_user.get("username")
-            if not resolved_username:
-                parser.error(f"User '{resolved_name}' has no username in config")
-        else:
-            parser.error(f"User '{resolved_name}' not found in config.json")
-    
-    elif resolved_username and not resolved_name:
-        # Lookup name from username
-        if config_data:
-            for user in config_data.get("users", []):
-                if user.get("username") == resolved_username:
-                    resolved_name = user.get("name")
-                    break
-    
-    if not resolved_username:
-        parser.error("Could not resolve username. Provide --username or ensure name exists in config.json")
-    
-    return resolved_name, resolved_username
-
-
-def _parse_period(period_str: str) -> Tuple[str, str]:
-    """
-    Parse period string to start and end dates.
-    
-    Supports:
-    - H1/H2: Half-year (e.g., '2025H1' = Jan 1 - Jun 30, '2025H2' = Jul 1 - Dec 31)
-    - Q1-Q4: Quarter (e.g., '2025Q1' = Jan 1 - Mar 31, '2025Q2' = Apr 1 - Jun 30)
-    - Year: Full year (e.g., '2025' = Jan 1 - Dec 31)
-    
-    Returns:
-        Tuple of (start_date, end_date) in YYYY-MM-DD format
-    """
-    period_str = period_str.strip().upper()
-    
-    # Match patterns: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY
-    import re
-    
-    # Half-year pattern: YYYYH1 or YYYYH2
-    half_match = re.match(r"^(\d{4})H([12])$", period_str)
-    if half_match:
-        year = int(half_match.group(1))
-        half = half_match.group(2)
-        if half == "1":
-            return (f"{year}-01-01", f"{year}-06-30")
-        else:  # H2
-            return (f"{year}-07-01", f"{year}-12-31")
-    
-    # Quarter pattern: YYYYQ1, YYYYQ2, YYYYQ3, YYYYQ4
-    quarter_match = re.match(r"^(\d{4})Q([1-4])$", period_str)
-    if quarter_match:
-        year = int(quarter_match.group(1))
-        quarter = int(quarter_match.group(2))
-        if quarter == 1:
-            return (f"{year}-01-01", f"{year}-03-31")
-        elif quarter == 2:
-            return (f"{year}-04-01", f"{year}-06-30")
-        elif quarter == 3:
-            return (f"{year}-07-01", f"{year}-09-30")
-        else:  # Q4
-            return (f"{year}-10-01", f"{year}-12-31")
-    
-    # Full year pattern: YYYY
-    year_match = re.match(r"^(\d{4})$", period_str)
-    if year_match:
-        year = int(year_match.group(1))
-        return (f"{year}-01-01", f"{year}-12-31")
-    
-    raise ValueError(
-        f"Invalid period format: {period_str}. "
-        "Use format: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., '2025H2', '2026Q1', '2025')"
-    )
-
-
-def _resolve_time_range(
-    period: Optional[str],
-    start_date: Optional[str],
-    end_date: Optional[str],
-    config_data: Optional[dict],
+    name: str | None,
+    username: str | None,
+    config_data: dict | None,
     parser: argparse.ArgumentParser,
-) -> Tuple[str, str, str]:
-    """Resolve period key and dates from arguments."""
-    period_key = period
-    resolved_start = start_date
-    resolved_end = end_date
-    
-    if period_key and not (resolved_start and resolved_end):
-        # Parse period string directly (e.g., 2025H2, 2026Q1, 2025)
-        try:
-            resolved_start, resolved_end = _parse_period(period_key)
-        except ValueError as e:
-            parser.error(str(e))
-    
-    elif (resolved_start and resolved_end) and not period_key:
-        # Derive period key from dates
-        start_dt = datetime.strptime(resolved_start, "%Y-%m-%d")
-        end_dt = datetime.strptime(resolved_end, "%Y-%m-%d")
-        
-        # Try to match common patterns
-        if start_dt.month == 1 and start_dt.day == 1 and end_dt.month == 12 and end_dt.day == 31:
-            period_key = str(start_dt.year)
-        elif start_dt.month == 7 and start_dt.day == 1 and end_dt.month == 12 and end_dt.day == 31:
-            period_key = f"{start_dt.year}H2"
-        elif start_dt.month == 1 and start_dt.day == 1 and end_dt.month == 6 and end_dt.day == 30:
-            period_key = f"{start_dt.year}H1"
-        elif start_dt.month == 1 and start_dt.day == 1 and end_dt.month == 3 and end_dt.day == 31:
-            period_key = f"{start_dt.year}Q1"
-        elif start_dt.month == 4 and start_dt.day == 1 and end_dt.month == 6 and end_dt.day == 30:
-            period_key = f"{start_dt.year}Q2"
-        elif start_dt.month == 7 and start_dt.day == 1 and end_dt.month == 9 and end_dt.day == 30:
-            period_key = f"{start_dt.year}Q3"
-        elif start_dt.month == 10 and start_dt.day == 1 and end_dt.month == 12 and end_dt.day == 31:
-            period_key = f"{start_dt.year}Q4"
-        else:
-            period_key = f"{resolved_start}_to_{resolved_end}"
-    
-    if not resolved_start or not resolved_end:
-        parser.error("Could not resolve date range. Provide --period or both --start and --end")
-    
-    return period_key, resolved_start, resolved_end
-
-
-def create_config(username: str, start_date: str, end_date: str, organization: str, output_dir: Path):
-    """Create or update config.json for the user."""
-    config_file = output_dir / "config.json"
-    
-    # Determine analysis period string
-    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-    
-    if start_dt.month == 7 and start_dt.day == 1 and end_dt.month == 12 and end_dt.day == 31:
-        period_str = f"{start_dt.year}H2 (July 1 - December 31, {start_dt.year})"
-    elif start_dt.month == 1 and start_dt.day == 1 and end_dt.month == 6 and end_dt.day == 30:
-        period_str = f"{start_dt.year}H1 (January 1 - June 30, {start_dt.year})"
-    else:
-        period_str = f"{start_date} to {end_date}"
-    
-    config = {
-        "username": username,
-        "organization": organization,
-        "start_date": start_date,
-        "end_date": end_date,
-        "analysis_period": period_str,
-        "notes": [
-            "This config file stores the analysis parameters for this user",
-            "Update start_date and end_date to change the analysis window",
-            "The review_data.json file should be in this same directory"
-        ]
-    }
-    
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with open(config_file, "w") as f:
-        json.dump(config, f, indent=2)
-    
-    return config_file
+) -> tuple[str | None, str]:
+    """Resolve name and username from arguments and config (GitHub-specific)."""
+    return resolve_user_identity(name, username, config_data, parser, prefer_email=False)
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Analyze GitHub PR reviews for a user",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
-    
+
     # Name/username options (mutually complementary)
     parser.add_argument(
         "-n",
@@ -303,110 +111,112 @@ def main():
         help="Person's name in slugified format (e.g., 'varun-sundar'). Full names with spaces are also supported but require quotes.",
     )
     parser.add_argument("-u", "--username", help="GitHub username")
-    
+
     # Period/dates options (mutually complementary)
     parser.add_argument("-p", "--period", help="Period key (e.g., '2025H2')")
     parser.add_argument("-s", "--start", type=validate_date, help="Start date (YYYY-MM-DD)")
     parser.add_argument("-e", "--end", type=validate_date, help="End date (YYYY-MM-DD)")
-    
+
     # Common options
-    parser.add_argument("--org", default="EvolutionIQ", help="Organization name (default: EvolutionIQ)")
-    parser.add_argument("-o", "--output", help="Output directory (default: reports/<slugified-name>/<period>)")
+    parser.add_argument(
+        "--org", default="EvolutionIQ", help="Organization name (default: EvolutionIQ)"
+    )
+    parser.add_argument(
+        "-o", "--output", help="Output directory (default: reports/<slugified-name>/<period>)"
+    )
     parser.add_argument("--github-token", help="GitHub API token (or set GITHUB_TOKEN env var)")
-    parser.add_argument("--project", help="Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)")
-    parser.add_argument("--location", default="us-east4", help="Vertex AI location (default: us-east4)")
-    
+    parser.add_argument(
+        "--project", help="Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)"
+    )
+    parser.add_argument(
+        "--location", default="us-east4", help="Vertex AI location (default: us-east4)"
+    )
+
     args = parser.parse_args()
-    
+
     # Validate: need at least one of (name OR username) AND one of (period OR start+end)
     has_identifier = bool(args.name or args.username)
     has_time_range = bool(args.period or (args.start and args.end))
-    
+
     if not has_identifier:
         parser.error("Must provide either -n/--name or --username")
-    
+
     if not has_time_range:
         parser.error("Must provide either -p/--period or both --start and --end")
-    
+
     if args.period and (args.start or args.end):
         parser.error("Cannot provide both -p/--period and --start/--end")
-    
+
     # Load centralized config if it exists
     script_dir = Path(__file__).parent
     centralized_config = script_dir / "config.json"
-    config_data = None
-    if centralized_config.exists():
-        with open(centralized_config) as f:
-            config_data = json.load(f)
-    
+    config_data = load_centralized_config(centralized_config)
+
     # Resolve name and username
     name, username = _resolve_user_identity(args.name, args.username, config_data, parser)
-    
+
     # Resolve period and dates
-    period_key, start_date, end_date = _resolve_time_range(
+    period_key, start_date, end_date = resolve_time_range(
         args.period, args.start, args.end, config_data, parser
     )
-    
+
     # Validate credentials
     github_token = args.github_token or os.getenv("GITHUB_TOKEN")
     vertexai_project = args.project or os.getenv("GOOGLE_CLOUD_PROJECT")
-    
+
     if not github_token:
-        parser.error("GitHub token required. Set --github-token or GITHUB_TOKEN environment variable")
-    
+        parser.error(
+            "GitHub token required. Set --github-token or GITHUB_TOKEN environment variable"
+        )
+
     if not vertexai_project:
-        parser.error("Google Cloud project required. Set --project or GOOGLE_CLOUD_PROJECT environment variable")
-    
+        parser.error(
+            "Google Cloud project required. Set --project or GOOGLE_CLOUD_PROJECT environment variable"
+        )
+
     # Determine output directory
-    if args.output:
-        output_dir = str(Path(args.output))
-    else:
-        # Get name slug - use resolved name or fallback to username
-        user_name_slug = slugify(name) if name else username
-        output_dir = str(Path("reports") / user_name_slug / period_key)
-    
+    output_dir = determine_output_dir(args.output, name, username, period_key)
+
     # Create config file
-    print(f"\n{'='*60}")
-    print(f"GitHub PR Review Analysis")
-    print(f"{'='*60}")
+    print(f"\n{'=' * 60}")
+    print("GitHub PR Review Analysis")
+    print(f"{'=' * 60}")
     print(f"Username: {username}")
     if name:
         print(f"Name: {name}")
     print(f"Period: {start_date} to {end_date} ({period_key})")
     print(f"Organization: {args.org}")
     print(f"Output: {output_dir}")
-    print(f"{'='*60}\n")
-    
-    if centralized_config.exists() and config_data:
-        # Check if user exists in centralized config
-        user_found = any(u.get("username") == username for u in config_data.get("users", []))
-        
-        if user_found:
-            # Use centralized config
-            config_file = centralized_config
-            print(f"Using centralized config: {config_file}")
-        else:
-            # Create individual config
-            config_file = create_config(
-                username,
-                start_date,
-                end_date,
-                args.org,
-                output_dir
-            )
+    print(f"{'=' * 60}\n")
+
+    if centralized_config.exists() and config_data and user_exists_in_config(config_data, username):
+        # Use centralized config
+        config_file = centralized_config
+        print(f"Using centralized config: {config_file}")
     else:
         # Create individual config
-        config_file = create_config(
-            username,
-            start_date,
-            end_date,
-            args.org,
-            output_dir
+        config_file = create_github_config(
+            username, start_date, end_date, args.org, Path(output_dir)
         )
-    
+
     # Import and run workflow
+    # These are already validated above, but ty needs explicit checks
+    if github_token is None:
+        parser.error("GitHub token is required")
+    if vertexai_project is None:
+        parser.error("Google Cloud project is required")
+    # Type narrowing: ty now knows these are not None
+    assert github_token is not None
+    assert vertexai_project is not None
     _run_workflow(
-        script_dir, config_file, github_token, vertexai_project, args.location, username, period_key, output_dir
+        script_dir,
+        config_file,
+        github_token,
+        vertexai_project,
+        args.location,
+        username,
+        period_key,
+        output_dir,
     )
 
 
@@ -423,9 +233,9 @@ def _run_workflow(
     """Import and execute the LangGraph workflow."""
     workflow_dir = script_dir / "pr-review-analysis" / "workflows"
     sys.path.insert(0, str(workflow_dir))
-    
-    from analyze import run
-    
+
+    from analyze import run  # type: ignore[import-untyped]
+
     try:
         result = run(
             config_path=str(config_file),
@@ -436,13 +246,13 @@ def _run_workflow(
             period=period_key if config_file.name == "config.json" else None,
             output_dir=output_dir,
         )
-        
-        print(f"\n{'='*60}")
+
+        print(f"\n{'=' * 60}")
         print("✓ Analysis Complete!")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Report: {result['output_dir']}/github-review-analysis.md")
         print(f"Config: {config_file}")
-        
+
     except Exception as e:
         print(f"\n❌ Error: {e}")
         traceback.print_exc()

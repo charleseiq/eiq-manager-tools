@@ -1,10 +1,7 @@
 """Tests for helper functions in analyze.py."""
 
-from datetime import datetime, timezone
-
-import pytest
-
 import importlib.util
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Import analyze module directly from file path (handles hyphenated directory name)
@@ -51,14 +48,14 @@ class TestParseGithubDate:
         """Test parsing date with Z timezone."""
         date_str = "2025-07-15T10:30:00Z"
         result = _parse_github_date(date_str)
-        expected = datetime(2025, 7, 15, 10, 30, 0, tzinfo=timezone.utc)
+        expected = datetime(2025, 7, 15, 10, 30, 0, tzinfo=UTC)
         assert result == expected
 
     def test_parse_with_timezone(self):
         """Test parsing date with explicit timezone."""
         date_str = "2025-07-15T10:30:00+00:00"
         result = _parse_github_date(date_str)
-        expected = datetime(2025, 7, 15, 10, 30, 0, tzinfo=timezone.utc)
+        expected = datetime(2025, 7, 15, 10, 30, 0, tzinfo=UTC)
         assert result == expected
 
 
@@ -67,9 +64,7 @@ class TestExtractPrInfo:
 
     def test_valid_pr_url(self):
         """Test extracting info from valid PR URL."""
-        pr_item = {
-            "html_url": "https://github.com/EvolutionIQ/repo-name/pull/123"
-        }
+        pr_item = {"html_url": "https://github.com/EvolutionIQ/repo-name/pull/123"}
         result = _extract_pr_info(pr_item)
         assert result is not None
         assert result["number"] == 123
@@ -102,8 +97,8 @@ class TestFilterReviewsByUserAndDate:
     def test_filter_reviews_in_range(self):
         """Test filtering reviews within date range."""
         username = "testuser"
-        start_dt = datetime(2025, 7, 1, tzinfo=timezone.utc)
-        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        start_dt = datetime(2025, 7, 1, tzinfo=UTC)
+        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC)
 
         reviews = [
             {
@@ -139,8 +134,8 @@ class TestFilterReviewsByUserAndDate:
     def test_filter_comments_in_range(self):
         """Test filtering comments within date range."""
         username = "testuser"
-        start_dt = datetime(2025, 7, 1, tzinfo=timezone.utc)
-        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        start_dt = datetime(2025, 7, 1, tzinfo=UTC)
+        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC)
 
         reviews = []
 
@@ -173,8 +168,8 @@ class TestFilterReviewsByUserAndDate:
     def test_filter_both_reviews_and_comments(self):
         """Test filtering both reviews and comments."""
         username = "testuser"
-        start_dt = datetime(2025, 7, 1, tzinfo=timezone.utc)
-        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        start_dt = datetime(2025, 7, 1, tzinfo=UTC)
+        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC)
 
         reviews = [
             {
@@ -203,8 +198,8 @@ class TestFilterReviewsByUserAndDate:
     def test_empty_inputs(self):
         """Test with empty inputs."""
         username = "testuser"
-        start_dt = datetime(2025, 7, 1, tzinfo=timezone.utc)
-        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        start_dt = datetime(2025, 7, 1, tzinfo=UTC)
+        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC)
 
         filtered_reviews, filtered_comments = _filter_reviews_by_user_and_date(
             [], [], username, start_dt, end_dt
@@ -216,8 +211,8 @@ class TestFilterReviewsByUserAndDate:
     def test_boundary_dates(self):
         """Test filtering at boundary dates."""
         username = "testuser"
-        start_dt = datetime(2025, 7, 1, tzinfo=timezone.utc)
-        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        start_dt = datetime(2025, 7, 1, tzinfo=UTC)
+        end_dt = datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC)
 
         reviews = [
             {

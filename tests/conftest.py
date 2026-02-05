@@ -1,8 +1,7 @@
 """Pytest configuration and fixtures."""
 
-import os
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -85,7 +84,7 @@ def temp_config_file(tmp_path):
 def mock_rich_available():
     """Mock rich library availability."""
     import importlib.util
-    from pathlib import Path
+
     analyze_path = Path(__file__).parent.parent / "pr-review-analysis" / "workflows" / "analyze.py"
     spec = importlib.util.spec_from_file_location("analyze", analyze_path)
     analyze_module = importlib.util.module_from_spec(spec)
@@ -98,7 +97,7 @@ def mock_rich_available():
 def mock_rich_unavailable():
     """Mock rich library unavailability."""
     import importlib.util
-    from pathlib import Path
+
     analyze_path = Path(__file__).parent.parent / "pr-review-analysis" / "workflows" / "analyze.py"
     spec = importlib.util.spec_from_file_location("analyze", analyze_path)
     analyze_module = importlib.util.module_from_spec(spec)

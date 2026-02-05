@@ -15,6 +15,7 @@ dependencies = [
     "jinja2>=3.1.0",
     "rich>=13.0.0",
     "python-dotenv>=1.0.0",
+    "atlassian-python-api>=3.41.0",
 ]
 
 [project.optional-dependencies]
@@ -23,7 +24,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
     "ruff>=0.1.0",
-    "mypy>=1.8.0",
+    "ty>=0.0.8",
     "types-requests>=2.31.0",
     "types-pyyaml>=6.0.0",
 ]
@@ -31,6 +32,8 @@ dev = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -53,31 +56,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.ruff.lint.isort]
-known-first-party = ["pr_review_analysis", "pr-review-analysis"]
-
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-check_untyped_defs = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-strict_equality = true
-show_error_codes = true
-
-[[tool.mypy.overrides]]
-module = [
-    "langchain_google_genai.*",
-    "langchain_google_vertexai.*",
-    "langgraph.*",
-    "langchain_core.*",
-    "markitdown.*",
-]
-ignore_missing_imports = true
+known-first-party = ["pr-review-analysis", "jira-analysis", "shared"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

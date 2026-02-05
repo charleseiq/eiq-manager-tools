@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+"""
+JIRA Sprint & Epic Analysis CLI
+
+Analyze JIRA sprints, velocity, and epic allocation for a user using LangGraph workflow and Vertex AI.
+
+Usage:
+    jira-analyze -n <name> -p <period> [options]
+    jira-analyze -u <username> -s <start-date> -e <end-date> [options]
+    jira-analyze -n <name> -s <start-date> -e <end-date> [options]
+    jira-analyze -u <username> -p <period> [options]
+
+Examples:
+    # Using slugified name and period (RECOMMENDED - no quotes needed!)
+    jira-analyze -n varun-sundar -p 2025H2          # Second half of 2025
+    jira-analyze -n ariel-ledesma -p 2025H1         # First half of 2025
+    jira-analyze -n erin-friesen -p 2026Q1          # First quarter of 2026
+    jira-analyze -n varun-sundar -p 2025            # Full year 2025
+
+    # Alternative: Using full name (requires quotes for spaces)
+    jira-analyze -n "Varun Sundar" -p 2025H2
+
+    # Using username and dates
+    jira-analyze -u varunsundar -s 2025-07-01 -e 2025-12-31
+
+    # Mixed: slugified name with dates, or username with period
+    jira-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
+    jira-analyze -u varunsundar -p 2025H2
+
+Options:
+    -n, --name NAME       Person's name in slugified format (e.g., varun-sundar).
+                          Full names with spaces (e.g., "Varun Sundar") are also
+                          supported but require quotes. Slugified format is recommended.
+    -u, --username USERNAME   JIRA username/email (e.g., varun.sundar@evolutioniq.com) or account ID
+    -p, --period PERIOD   Period string: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY
+                          (e.g., "2025H2", "2026Q1", "2025")
+    -s, --start DATE      Start date (YYYY-MM-DD)
+    -e, --end DATE        End date (YYYY-MM-DD)
+    --jira-url URL        JIRA instance URL (or set JIRA_URL env var)
+    -o, --output DIR      Output directory (default: reports/<slugified-name>/<period>)
+    --jira-token TOKEN    JIRA API token (or set JIRA_TOKEN env var)
+    --jira-email EMAIL    JIRA email (or set JIRA_EMAIL env var)
+    --project PROJECT     Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)
+    --location LOCATION   Vertex AI location (default: us-east4)
+
+Note: Provide either (name OR username) AND (period OR start+end dates)
+"""
+
+import argparse
+import os
+import sys
+import traceback
+from pathlib import Path
+
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    # python-dotenv not installed, skip loading .env
+    pass
+
+# Import shared utilities
+sys.path.insert(0, str(Path(__file__).parent))
+from shared.cli_utils import (
+    determine_output_dir,
+    resolve_time_range,
+    resolve_user_identity,
+)
+from shared.config_utils import (
+    create_jira_config,
+    load_centralized_config,
+)
+
+
+def _resolve_user_identity(
+    name: str | None,
+    username: str | None,
+    config_data: dict | None,
+    parser: argparse.ArgumentParser,
+) -> tuple[str | None, str]:
+    """Resolve user's name and username from CLI arguments and config (JIRA-specific, prefers email)."""
+    return resolve_user_identity(name, username, config_data, parser, prefer_email=True)
+
+
+def _print_analysis_summary(
+    username: str,
+    name: str | None,
+    start_date: str,
+    end_date: str,
+    period_key: str,
+    jira_url: str,
+    output_dir: str,
+):
+    """Print analysis configuration summary."""
+    print("\n" + "=" * 60)
+    print("JIRA Analysis Configuration")
+    print("=" * 60)
+    if name:
+        print(f"Name:        {name}")
+    print(f"Username:    {username}")
+    print(f"Period:      {period_key}")
+    print(f"Date Range:  {start_date} to {end_date}")
+    print(f"JIRA URL:   {jira_url}")
+    print(f"Output:      {output_dir}")
+    print("=" * 60 + "\n")
+
+
+def _determine_config_file(
+    centralized_config: bool,
+    config_data: dict | None,  # pylint: disable=unused-argument
+    username: str,
+    start_date: str,
+    end_date: str,
+    output_dir: str,
+) -> Path:
+    """Determine which config file to use."""
+    if centralized_config:
+        # Use centralized config.json
+        script_dir = Path(__file__).parent
+        return script_dir / "config.json"
+    else:
+        # Create individual config file
+        return create_jira_config(username, start_date, end_date, Path(output_dir))
+
+
+def _run_workflow(
+    script_dir: Path,
+    config_file: Path,
+    jira_token: str,
+    jira_email: str,
+    jira_url: str,
+    jira_project: str,
+    vertexai_project: str,
+    vertexai_location: str,
+    username: str,
+    period_key: str,
+    output_dir: str,
+):
+    """Import and run the JIRA analysis workflow."""
+    try:
+        # Import the workflow module
+        import sys
+
+        sys.path.insert(0, str(script_dir))
+
+        # Import using importlib to handle hyphenated module name
+        import importlib.util
+
+        analyze_path = script_dir / "jira-analysis" / "workflows" / "analyze.py"
+        spec = importlib.util.spec_from_file_location("jira_analyze", analyze_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module from {analyze_path}")
+        jira_analyze_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(jira_analyze_module)
+        run = jira_analyze_module.run
+
+        # Run the workflow
+        run(
+            config_path=str(config_file),
+            jira_token=jira_token,
+            jira_email=jira_email,
+            jira_url=jira_url,
+            jira_project=jira_project,
+            vertexai_project=vertexai_project,
+            vertexai_location=vertexai_location,
+            username=username,
+            period=period_key,
+            output_dir=output_dir,
+        )
+    except ImportError as e:
+        print(f"❌ Error importing workflow: {e}")
+        print("Make sure jira-analysis package is installed correctly.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error running workflow: {e}")
+        traceback.print_exc()
+        raise
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Analyze JIRA sprints, velocity, and epic allocation for a user",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+
+    # Name/username options
+    identity_group = parser.add_mutually_exclusive_group(required=False)
+    identity_group.add_argument(
+        "-n",
+        "--name",
+        help="Person's name in slugified format (e.g., varun-sundar). Full names with spaces require quotes.",
+    )
+    identity_group.add_argument("-u", "--username", help="JIRA username or account ID")
+
+    # Period/date options
+    period_group = parser.add_mutually_exclusive_group(required=False)
+    period_group.add_argument(
+        "-p",
+        "--period",
+        help="Period string: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., '2025H2', '2026Q1', '2025')",
+    )
+    period_group.add_argument("-s", "--start", help="Start date (YYYY-MM-DD)")
+
+    parser.add_argument(
+        "-e", "--end", help="End date (YYYY-MM-DD). Required if --start is provided."
+    )
+
+    # JIRA configuration
+    parser.add_argument(
+        "--jira-url",
+        help="JIRA instance URL (or set JIRA_URL env var)",
+        default=os.getenv("JIRA_URL", ""),
+    )
+    parser.add_argument(
+        "--jira-project",
+        help="JIRA project key (required to prevent unbounded query errors, or set JIRA_PROJECT env var)",
+        default=os.getenv("JIRA_PROJECT", ""),
+    )
+
+    # Output
+    parser.add_argument(
+        "-o", "--output", help="Output directory (default: reports/<slugified-name>/<period>)"
+    )
+
+    # Credentials
+    parser.add_argument("--jira-token", help="JIRA API token (or set JIRA_TOKEN env var)")
+    parser.add_argument("--jira-email", help="JIRA email (or set JIRA_EMAIL env var)")
+    parser.add_argument(
+        "--project", help="Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)"
+    )
+    parser.add_argument(
+        "--location", help="Vertex AI location (default: us-east4)", default="us-east4"
+    )
+
+    args = parser.parse_args()
+
+    # Validate required arguments
+    if not args.name and not args.username:
+        parser.error("Must provide either -n/--name or -u/--username")
+
+    if not args.period and not (args.start and args.end):
+        parser.error("Must provide either -p/--period or both --start and --end")
+
+    if args.start and not args.end:
+        parser.error("--end is required when --start is provided")
+
+    # Load config if it exists
+    script_dir = Path(__file__).parent
+    config_file_path = script_dir / "config.json"
+    config_data = load_centralized_config(config_file_path)
+    centralized_config = config_data is not None
+
+    # Resolve name and username
+    name, username = _resolve_user_identity(args.name, args.username, config_data, parser)
+
+    # Resolve period and dates
+    period_key, start_date, end_date = resolve_time_range(
+        args.period, args.start, args.end, config_data, parser
+    )
+
+    # Validate credentials
+    jira_token = args.jira_token or os.getenv("JIRA_TOKEN")
+    jira_email = args.jira_email or os.getenv("JIRA_EMAIL")
+    jira_url = args.jira_url or os.getenv("JIRA_URL")
+    jira_project = args.jira_project or os.getenv("JIRA_PROJECT", "")
+    vertexai_project = args.project or os.getenv("GOOGLE_CLOUD_PROJECT")
+
+    if not jira_token:
+        parser.error("JIRA token required. Set --jira-token or JIRA_TOKEN environment variable")
+
+    if not jira_email:
+        parser.error("JIRA email required. Set --jira-email or JIRA_EMAIL environment variable")
+
+    if not jira_url:
+        parser.error("JIRA URL required. Set --jira-url or JIRA_URL environment variable")
+
+    if not jira_project:
+        parser.error(
+            "JIRA project required to prevent unbounded query errors. Set --jira-project or JIRA_PROJECT environment variable"
+        )
+
+    if not vertexai_project:
+        parser.error(
+            "Google Cloud project required. Set --project or GOOGLE_CLOUD_PROJECT environment variable"
+        )
+
+    # Determine output directory
+    output_dir = determine_output_dir(args.output, name, username, period_key)
+
+    # Display analysis summary
+    # jira_url is validated above, but ty needs explicit check
+    if jira_url is None:
+        parser.error("JIRA URL is required")
+    assert jira_url is not None
+    _print_analysis_summary(username, name, start_date, end_date, period_key, jira_url, output_dir)
+
+    # Determine config file (centralized or individual)
+    config_file = _determine_config_file(
+        centralized_config, config_data, username, start_date, end_date, output_dir
+    )
+
+    # Import and run workflow (pass jira_url and jira_project so they're available in state)
+    if jira_token is None:
+        parser.error("JIRA token is required")
+    if jira_email is None:
+        parser.error("JIRA email is required")
+    resolved_jira_url = jira_url or ""
+    resolved_jira_project = jira_project or ""
+    if vertexai_project is None:
+        parser.error("Google Cloud project is required")
+    # Type narrowing: ty now knows these are not None
+    assert jira_token is not None
+    assert jira_email is not None
+    assert vertexai_project is not None
+    _run_workflow(
+        script_dir,
+        config_file,
+        jira_token,
+        jira_email,
+        resolved_jira_url,
+        resolved_jira_project,
+        vertexai_project,
+        args.location,
+        username,
+        period_key,
+        output_dir,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -19,6 +19,26 @@ gh-analyze *args:
     # Use uv run to ensure dependencies are available
     uv run ./gh-analyze {{args}}
 
+# Run JIRA sprint & epic analysis - passes all arguments through to jira-analyze
+# 
+# Usage examples:
+#   just jira-analyze -n varun-sundar -p 2025H2            # RECOMMENDED: Slugified name, second half
+#   just jira-analyze -n ariel-ledesma -p 2025H1           # First half of 2025
+#   just jira-analyze -n erin-friesen -p 2026Q1             # First quarter of 2026
+#   just jira-analyze -n varun-sundar -p 2025               # Full year 2025
+#   just jira-analyze -n "Varun Sundar" -p 2025H2           # Alternative: Full name (quotes needed)
+#   just jira-analyze -u varunsundar -p 2025H2              # Use -u for JIRA usernames/account IDs
+# 
+# IMPORTANT: 
+#   - Always use slugified names (e.g., varun-sundar) instead of full names.
+#   - Periods: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., 2025H2, 2026Q1, 2025)
+#   - Requires JIRA_TOKEN, JIRA_EMAIL, and JIRA_URL environment variables
+jira-analyze *args:
+    #!/usr/bin/env bash
+    set -e
+    # Use uv run to ensure dependencies are available
+    uv run ./jira-analyze {{args}}
+
 # Authenticate with Google Cloud for Vertex AI access
 auth:
     @echo "🔐 Setting up Google Cloud authentication..."
@@ -132,11 +152,20 @@ setup:
         echo "   Then run: just auth"; \
     fi
     @echo ""
+    @echo "7. Installing pre-commit hooks..."
+    @if command -v pre-commit > /dev/null 2>&1; then \
+        pre-commit install || echo "⚠️  pre-commit install failed"; \
+        echo "✓ Pre-commit hooks installed"; \
+    else \
+        echo "⚠️  pre-commit not found - installing..."; \
+        uv run pre-commit install || echo "⚠️  Failed to install pre-commit hooks"; \
+    fi
+    @echo ""
     @echo "Setup complete!"
     @echo ""
     @echo "Next steps:"
     @echo "  1. If not authenticated: just auth"
-    @echo "  2. Run analysis: just gh-analyze <username> --start <date> --end <date>"
+    @echo "  2. Run analysis: just gh-analyze -n <name> -p <period>"
     @echo "  3. Run tests: just test"
     @echo "  4. Format code: just format"
 

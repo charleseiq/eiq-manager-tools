@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "username": "varunsundar",
+      "email": "varun.sundar@evolutioniq.com",
+      "account_id": "5d1234567890abcdef",
+      "name": "Varun Sundar"
+    }
+  ]
+}
+
+# Note: jira_url is NOT defined in config.json
+# Set JIRA_URL in your .env file or environment variables
+# Example: JIRA_URL=https://yourcompany.atlassian.net

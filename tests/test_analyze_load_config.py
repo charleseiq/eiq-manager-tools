@@ -1,12 +1,7 @@
 """Tests for load_config function."""
 
-import json
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
-
 import importlib.util
+import json
 from pathlib import Path
 
 # Import analyze module directly from file path (handles hyphenated directory name)
@@ -81,7 +76,7 @@ class TestLoadConfig:
         assert "not found" in result["error"].lower()
 
     def test_load_centralized_config_period_not_found(self, temp_config_file):
-        """Test loading config with non-existent period."""
+        """Test loading config with period that parses successfully."""
         state: AnalysisState = {
             "config_path": str(temp_config_file),
             "username": "testuser",
@@ -104,8 +99,10 @@ class TestLoadConfig:
 
         result = load_config(state)
 
-        assert result.get("error") is not None
-        assert "period" in result["error"].lower()
+        # Period parsing should succeed even if not in config periods section
+        assert result.get("error") is None
+        assert result["start_date"] == "2026-01-01"
+        assert result["end_date"] == "2026-06-30"
 
     def test_load_individual_config(self, tmp_path):
         """Test loading from individual config file."""

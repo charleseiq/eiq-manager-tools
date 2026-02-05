@@ -3,23 +3,29 @@
   "users": [
     {
       "username": "ariel-ledesma-eiq",
+      "email": "ariel.ledesma@evolutioniq.com",
       "name": "Ariel Ledesma"
     },
     {
       "username": "ey-evolution",
+      "email": "edward.yang@evolutioniq.com",
       "name": "Edward Yang"
     },
     {
       "username": "efriesen",
+      "email": "erin.friesen@evolutioniq.com",
       "name": "Erin Friesen"
     },
     {
       "username": "raghueiq",
+      "email": "raghuveer.sunkara@evolutioniq.com",
       "name": "Raghuveer Sunkara"
     },
     {
       "username": "sundarvarun",
-      "name": "Varun Sundar"
+      "email": "varun.sundar@evolutioniq.com",
+      "name": "Varun Sundar",
+      "account_id": "712020:9b24a504-5186-4db2-a263-2f66398ba887"
     }
   ]
 }
