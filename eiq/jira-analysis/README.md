@@ -36,7 +36,7 @@ JIRA_TOKEN=your_jira_api_token_here
 JIRA_URL=https://yourcompany.atlassian.net
 JIRA_PROJECT=WC
 EVOLUTIONIQ_EMAIL=your_email@evolutioniq.com
-GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_PROJECT=eiq-development
 GOOGLE_CLOUD_LOCATION=us-east4
 ```
 

@@ -58,7 +58,7 @@ JIRA_PROJECT=WC
 EVOLUTIONIQ_EMAIL=your_email@evolutioniq.com
 
 # Google Cloud (for all tools)
-GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_PROJECT=eiq-development
 GOOGLE_CLOUD_LOCATION=us-east4
 ```
 
@@ -303,7 +303,7 @@ See individual module READMEs for workflow-specific details.
 
 **"Google Cloud project required":**
 ```bash
-export GOOGLE_CLOUD_PROJECT=your-project-id
+export GOOGLE_CLOUD_PROJECT=eiq-development
 ```
 
 **"ModuleNotFoundError":**

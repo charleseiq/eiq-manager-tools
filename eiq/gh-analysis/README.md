@@ -32,7 +32,7 @@ just gh-analyze -n varun-sundar -p 2025H2
 
 ```bash
 GITHUB_TOKEN=your_github_token_here
-GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_PROJECT=eiq-development
 GOOGLE_CLOUD_LOCATION=us-east4
 ```
 
@@ -131,7 +131,7 @@ export GITHUB_TOKEN=your_token_here
 
 ### "Google Cloud project required"
 ```bash
-export GOOGLE_CLOUD_PROJECT=your-project-id
+export GOOGLE_CLOUD_PROJECT=eiq-development
 ```
 
 ## See Also
