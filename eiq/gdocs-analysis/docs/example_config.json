@@ -1,20 +1,24 @@
+# Minimal config (recommended) - searches all Google Docs in your Drive
 {
   "email": "user@example.com",
   "start_date": "2025-07-01",
-  "end_date": "2025-12-31",
-  "drive_folder_ids": [
-    "folder_id_1",
-    "folder_id_2"
-  ],
-  "document_types": [
-    "Technical Design Doc",
-    "TDD",
-    "Design Document",
-    "Architecture Review"
+  "end_date": "2025-12-31"
+}
+
+# Centralized config.json (recommended) - minimal example
+{
+  "organization": "EvolutionIQ",
+  "users": [
+    {
+      "username": "user",
+      "email": "user@example.com",
+      "name": "User Name"
+    }
   ]
 }
 
-Note: When using centralized config.json, add drive_folder_ids and document_types at the top level:
+# Optional (deprecated): Limit search to specific folders and document types
+# Only use if you need to restrict the search scope
 {
   "organization": "EvolutionIQ",
   "drive_folder_ids": ["folder_id_1", "folder_id_2"],

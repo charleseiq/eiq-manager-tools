@@ -141,44 +141,131 @@ gdocs-analyze *args:
 
 # Authenticate with Google Cloud for Vertex AI access
 auth:
-    @echo "🔐 Setting up Google Cloud authentication..."
-    @echo ""
-    @if ! command -v gcloud > /dev/null 2>&1; then \
-        echo "❌ gcloud CLI not found"; \
-        echo "   Install from: https://cloud.google.com/sdk/docs/install"; \
-        exit 1; \
+    #!/usr/bin/env bash
+    set -e
+    # Load .env file if it exists
+    if [ -f .env ]; then set -a; source .env; set +a; fi
+    
+    echo "🔐 Setting up Google Cloud authentication..."
+    echo ""
+    
+    if ! command -v gcloud > /dev/null 2>&1; then
+        echo "❌ gcloud CLI not found"
+        echo "   Install from: https://cloud.google.com/sdk/docs/install"
+        exit 1
     fi
-    @echo "✓ gcloud CLI found"
-    @echo ""
-    @echo "Running: gcloud auth application-default login"
-    @echo "This will open a browser for authentication..."
-    @gcloud auth application-default login
-    @echo ""
-    @echo "✓ Authentication complete!"
-    @echo ""
-    @echo "Verifying authentication..."
-    @if gcloud auth application-default print-access-token > /dev/null 2>&1; then \
-        echo "✓ Application Default Credentials are set"; \
-    else \
-        echo "⚠️  Warning: Could not verify credentials"; \
+    echo "✓ gcloud CLI found"
+    echo ""
+    echo "Running: gcloud auth application-default login"
+    echo "This will open a browser for authentication..."
+    gcloud auth application-default login
+    echo ""
+    echo "✓ Authentication complete!"
+    echo ""
+    echo "Verifying authentication..."
+    if gcloud auth application-default print-access-token > /dev/null 2>&1; then
+        echo "✓ Application Default Credentials are set"
+    else
+        echo "⚠️  Warning: Could not verify credentials"
     fi
-    @echo ""
-    @if [ -z "$$GOOGLE_CLOUD_PROJECT" ]; then \
-        echo "⚠️  GOOGLE_CLOUD_PROJECT not set"; \
-        echo "   Set it with: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
-    else \
-        echo "✓ GOOGLE_CLOUD_PROJECT is set: $$GOOGLE_CLOUD_PROJECT"; \
-        echo ""; \
-        echo "Checking if Vertex AI API is enabled..."; \
-        if gcloud services list --enabled --filter="name:aiplatform.googleapis.com" --format="value(name)" | grep -q aiplatform; then \
-            echo "✓ Vertex AI API is enabled"; \
-        else \
-            echo "⚠️  Vertex AI API may not be enabled"; \
-            echo "   Enable it with: gcloud services enable aiplatform.googleapis.com"; \
-        fi; \
+    echo ""
+    if [ -z "$GOOGLE_CLOUD_PROJECT" ]; then
+        echo "⚠️  GOOGLE_CLOUD_PROJECT not set"
+        echo "   Set it with: export GOOGLE_CLOUD_PROJECT=your-project-id"
+        echo "   Or add to .env file: GOOGLE_CLOUD_PROJECT=eiq-development"
+    else
+        echo "✓ GOOGLE_CLOUD_PROJECT is set: $GOOGLE_CLOUD_PROJECT"
+        echo ""
+        echo "Checking if Vertex AI API is enabled..."
+        if gcloud services list --enabled --filter="name:aiplatform.googleapis.com" --format="value(name)" | grep -q aiplatform; then
+            echo "✓ Vertex AI API is enabled"
+        else
+            echo "⚠️  Vertex AI API may not be enabled"
+            echo "   Enable it with: gcloud services enable aiplatform.googleapis.com"
+        fi
     fi
-    @echo ""
-    @echo "Authentication setup complete!"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📁 Setting up Google Drive authentication..."
+    echo ""
+    TOKEN_FILE="$HOME/.config/gdocs-analysis/token.json"
+    
+    if [ -f "$TOKEN_FILE" ]; then
+        echo "✓ Google Drive token file exists: $TOKEN_FILE"
+        echo ""
+        echo "   To refresh your Google Drive authentication, delete the token file:"
+        echo "   rm $TOKEN_FILE"
+        echo "   Then run 'just auth' again to regenerate"
+    else
+        echo "ℹ️  Google Drive token file not found"
+        echo ""
+        echo "   Generating Google Drive token using Secret Manager..."
+        echo "   ⚠️  IMPORTANT: If you're on a remote server, start an SSH tunnel with port 8989 forwarded!"
+        echo ""
+        
+        # Try to generate token using Secret Manager
+        # Use uv run to ensure we're using the project's virtual environment
+        if uv run python -c "from google.cloud import secretmanager" 2>/dev/null; then
+            uv run python scripts/generate-drive-token.py
+            if [ -f "$TOKEN_FILE" ]; then
+                echo ""
+                echo "✓ Google Drive token generated successfully!"
+            else
+                echo ""
+                echo "⚠️  Token generation may have failed or was cancelled"
+                echo "   You can try again by running: just auth"
+            fi
+        else
+            echo "⚠️  Secret Manager dependency not available"
+            echo "   Installing dependencies..."
+            uv sync
+            echo ""
+            echo "   Retrying token generation..."
+            if uv run python scripts/generate-drive-token.py; then
+                if [ -f "$TOKEN_FILE" ]; then
+                    echo ""
+                    echo "✓ Google Drive token generated successfully!"
+                fi
+            else
+                echo ""
+                echo "⚠️  Token generation failed"
+                echo "   You can manually set up credentials.json (see eiq/gdocs-analysis/README.md)"
+            fi
+        fi
+    fi
+    
+    echo ""
+    echo "Checking if Google Drive API is enabled..."
+    if [ -n "$GOOGLE_CLOUD_PROJECT" ]; then
+        if gcloud services list --enabled --filter="name:drive.googleapis.com" --format="value(name)" | grep -q drive; then
+            echo "✓ Google Drive API is enabled"
+        else
+            echo "⚠️  Google Drive API may not be enabled"
+            echo "   Enable it with: gcloud services enable drive.googleapis.com --project=$GOOGLE_CLOUD_PROJECT"
+        fi
+    else
+        echo "⚠️  Cannot check API status (GOOGLE_CLOUD_PROJECT not set)"
+    fi
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Authentication setup complete!"
+
+# Generate Google Drive OAuth token using Secret Manager
+generate-drive-token:
+    #!/usr/bin/env bash
+    set -e
+    # Load .env file if it exists
+    if [ -f .env ]; then set -a; source .env; set +a; fi
+    
+    echo "🔐 Generating Google Drive OAuth token..."
+    echo ""
+    echo "This script uses Secret Manager to get OAuth credentials from GCP."
+    echo "Make sure you have Application Default Credentials set up (run 'just auth' first)."
+    echo ""
+    echo "⚠️  IMPORTANT: Start an SSH tunnel with port 8989 forwarded before running this!"
+    echo ""
+    uv run python scripts/generate-drive-token.py
 
 # Setup: Install dependencies and verify configuration
 setup:

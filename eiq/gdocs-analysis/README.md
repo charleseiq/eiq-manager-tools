@@ -49,11 +49,20 @@ just gdocs-analyze -n varun-sundar -p 2025H2
 
 ### Configuration
 
-Add `drive_folder_ids` and `document_types` to centralized `config.json`:
+**Default behavior:** The tool searches **all Google Docs** in your Google Drive that were created or modified within the specified date range. No configuration needed!
+
+**Optional (deprecated):** If you want to limit the search to specific folders or document types, you can add `drive_folder_ids` and `document_types` to centralized `config.json`:
 
 ```json
 {
   "organization": "EvolutionIQ",
+  "users": [
+    {
+      "username": "varunsundar",
+      "email": "varun.sundar@evolutioniq.com",
+      "name": "Varun Sundar"
+    }
+  ],
   "drive_folder_ids": [
     "1a2b3c4d5e6f7g8h9i0j",
     "9z8y7x6w5v4u3t2s1r0q"
@@ -63,13 +72,6 @@ Add `drive_folder_ids` and `document_types` to centralized `config.json`:
     "TDD",
     "Design Document",
     "Architecture Review"
-  ],
-  "users": [
-    {
-      "username": "varunsundar",
-      "email": "varun.sundar@evolutioniq.com",
-      "name": "Varun Sundar"
-    }
   ]
 }
 ```
@@ -77,11 +79,9 @@ Add `drive_folder_ids` and `document_types` to centralized `config.json`:
 **Important Notes:**
 - The `email` field is the same email used for JIRA
 - During OAuth flow, authenticate with the same Google account as this email
-- `drive_folder_ids` are shared across all users (top-level config)
-
-**Finding Folder IDs:**
-- Open Google Drive folder in browser
-- Extract folder ID from URL: `https://drive.google.com/drive/folders/FOLDER_ID_HERE`
+- **By default, all Google Docs in your Drive are searched** - no `drive_folder_ids` or `document_types` needed
+- If `drive_folder_ids` is specified, only those folders will be searched (legacy behavior)
+- If `document_types` is specified with `drive_folder_ids`, only documents matching those name patterns will be included
 
 ### Environment Variables
 
@@ -197,10 +197,10 @@ load_config → fetch_gdocs → analyze → generate → save → END
 
 ### No Documents Found
 
-- Verify `drive_folder_ids` are correct in `config.json`
-- Check that document names match `document_types` patterns
 - Ensure documents were created/modified within the date range
-- Verify you have read access to the folders
+- Verify you have read access to the documents
+- If using `drive_folder_ids`, verify folder IDs are correct in `config.json`
+- If using `document_types`, check that document names match the patterns
 
 ### Conversion Errors
 

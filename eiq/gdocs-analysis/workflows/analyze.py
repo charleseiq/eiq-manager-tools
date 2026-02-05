@@ -2,7 +2,7 @@
 LangGraph workflow for Google Docs technical design document analysis using Vertex AI.
 
 This workflow:
-1. Lists Google Docs from specified folders in a date range
+1. Lists all Google Docs in user's Drive within a date range (or from specified folders if configured)
 2. Converts documents to markdown and saves to artifacts folder
 3. Analyzes document quality, comment responses, and team engagement
 4. Generates analysis using Vertex AI with a standardized template
@@ -75,6 +75,16 @@ try:
 except ImportError:
     GOOGLE_APIS_AVAILABLE = False
 
+# Secret Manager availability check (optional, for OAuth credentials)
+# We'll try importing it when needed, so just check if the package exists
+try:
+    import importlib
+
+    importlib.import_module("google.cloud.secretmanager")
+    SECRET_MANAGER_AVAILABLE = True
+except ImportError:
+    SECRET_MANAGER_AVAILABLE = False
+
 # Constants
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 TEMPLATE_PATH = TEMPLATE_DIR / "gdocs-analysis.jinja2.md"
@@ -96,8 +106,8 @@ class AnalysisState(TypedDict):
     period: str | None  # Period key for centralized config lookup
 
     # Google Drive API
-    drive_folder_ids: list[str]
-    document_types: list[str]
+    drive_folder_ids: list[str]  # Optional, deprecated - if empty, searches all Drive
+    document_types: list[str]  # Optional, deprecated - only used with drive_folder_ids
 
     # Vertex AI
     vertexai_project: str
@@ -205,16 +215,59 @@ def _get_google_drive_service(expected_email: str | None = None):
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            if not credentials_file.exists():
-                raise FileNotFoundError(
-                    f"Credentials file not found: {credentials_file}\n"
-                    "Please download credentials.json from Google Cloud Console and place it in ~/.config/gdocs-analysis/"
-                )
-            if expected_email:
-                print(f"\n⚠️  Please authenticate with Google account: {expected_email}")
-                print("   (This should be the same email you use for JIRA)\n")
-            flow = InstalledAppFlow.from_client_secrets_file(str(credentials_file), SCOPES)
-            creds = flow.run_local_server(port=0)
+            # Try to get credentials from Secret Manager if credentials.json doesn't exist
+            credentials_data = None
+            if not credentials_file.exists() and SECRET_MANAGER_AVAILABLE:
+                try:
+                    import os
+                    import tempfile
+
+                    from google.cloud import secretmanager
+
+                    gcp_project = os.getenv("GOOGLE_CLOUD_PROJECT", "eiq-development")
+                    secret_id = "google_drive_oauth_json"
+                    secret_name = f"projects/{gcp_project}/secrets/{secret_id}/versions/latest"
+
+                    client = secretmanager.SecretManagerServiceClient()
+                    response = client.access_secret_version(request={"name": secret_name})
+                    credentials_data = response.payload.data.decode("UTF-8")
+                except Exception:
+                    # If Secret Manager fails, fall back to credentials.json requirement
+                    pass
+
+            if credentials_data:
+                # Use credentials from Secret Manager
+                import tempfile
+
+                with tempfile.NamedTemporaryFile(
+                    mode="w+t", encoding="utf-8", suffix=".json", delete=False
+                ) as temp_file:
+                    temp_file.write(credentials_data)
+                    temp_file.flush()
+                    temp_credentials_path = temp_file.name
+
+                try:
+                    if expected_email:
+                        print(f"\n⚠️  Please authenticate with Google account: {expected_email}")
+                        print("   (This should be the same email you use for JIRA)\n")
+                    flow = InstalledAppFlow.from_client_secrets_file(temp_credentials_path, SCOPES)
+                    creds = flow.run_local_server(port=0)
+                finally:
+                    os.unlink(temp_credentials_path)
+            else:
+                # Fall back to credentials.json file
+                if not credentials_file.exists():
+                    raise FileNotFoundError(
+                        f"Credentials file not found: {credentials_file}\n"
+                        "Please either:\n"
+                        "  1. Download credentials.json from Google Cloud Console and place it in ~/.config/gdocs-analysis/\n"
+                        "  2. Or run 'just generate-drive-token' to use Secret Manager"
+                    )
+                if expected_email:
+                    print(f"\n⚠️  Please authenticate with Google account: {expected_email}")
+                    print("   (This should be the same email you use for JIRA)\n")
+                flow = InstalledAppFlow.from_client_secrets_file(str(credentials_file), SCOPES)
+                creds = flow.run_local_server(port=0)
 
         # Save credentials for next run
         token_file.parent.mkdir(parents=True, exist_ok=True)
@@ -224,10 +277,72 @@ def _get_google_drive_service(expected_email: str | None = None):
     return build("drive", "v3", credentials=creds)
 
 
-def _list_documents_in_folder(
+def _list_all_documents(service: Any, start_date: str, end_date: str) -> list[dict]:
+    """List all Google Docs in user's Drive within date range."""
+    documents = []
+
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC)
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=UTC)
+    end_dt = end_dt.replace(hour=23, minute=59, second=59)
+
+    try:
+        # Query for all Google Docs (not trashed)
+        query = "mimeType='application/vnd.google-apps.document' and trashed=false"
+        page_token = None
+        all_items = []
+
+        # Paginate through all results
+        while True:
+            results = (
+                service.files()
+                .list(
+                    q=query,
+                    fields="nextPageToken, files(id, name, createdTime, modifiedTime, webViewLink, owners)",
+                    orderBy="modifiedTime desc",
+                    pageToken=page_token,
+                    pageSize=1000,  # Max page size
+                )
+                .execute()
+            )
+
+            items = results.get("files", [])
+            all_items.extend(items)
+
+            page_token = results.get("nextPageToken")
+            if not page_token:
+                break
+
+        # Filter by date range
+        for item in all_items:
+            modified_time = datetime.fromisoformat(item["modifiedTime"].replace("Z", "+00:00"))
+            created_time = datetime.fromisoformat(item["createdTime"].replace("Z", "+00:00"))
+
+            # Include if created or modified in date range
+            if start_dt <= modified_time <= end_dt or start_dt <= created_time <= end_dt:
+                documents.append(
+                    {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "created_time": item["createdTime"],
+                        "modified_time": item["modifiedTime"],
+                        "url": item["webViewLink"],
+                        "owners": [
+                            owner.get("displayName", "") for owner in item.get("owners", [])
+                        ],
+                    }
+                )
+
+    except HttpError as error:
+        print(f"An error occurred listing documents: {error}")
+        return []
+
+    return documents
+
+
+def _list_documents_in_folder_legacy(
     service: Any, folder_id: str, start_date: str, end_date: str, document_types: list[str]
 ) -> list[dict]:
-    """List Google Docs in a folder within date range."""
+    """Legacy function: List Google Docs in a folder within date range (deprecated)."""
     documents = []
 
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC)
@@ -258,23 +373,23 @@ def _list_documents_in_folder(
             if not (start_dt <= modified_time <= end_dt or start_dt <= created_time <= end_dt):
                 continue
 
-            # Check if document name matches any document type pattern
-            name_lower = item["name"].lower()
-            matches_type = any(doc_type.lower() in name_lower for doc_type in document_types)
+            # Check if document name matches any document type pattern (if specified)
+            if document_types:
+                name_lower = item["name"].lower()
+                matches_type = any(doc_type.lower() in name_lower for doc_type in document_types)
+                if not matches_type:
+                    continue
 
-            if matches_type:
-                documents.append(
-                    {
-                        "id": item["id"],
-                        "name": item["name"],
-                        "created_time": item["createdTime"],
-                        "modified_time": item["modifiedTime"],
-                        "url": item["webViewLink"],
-                        "owners": [
-                            owner.get("displayName", "") for owner in item.get("owners", [])
-                        ],
-                    }
-                )
+            documents.append(
+                {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "created_time": item["createdTime"],
+                    "modified_time": item["modifiedTime"],
+                    "url": item["webViewLink"],
+                    "owners": [owner.get("displayName", "") for owner in item.get("owners", [])],
+                }
+            )
 
     except HttpError as error:
         print(f"An error occurred listing folder {folder_id}: {error}")
@@ -316,7 +431,7 @@ def load_config(state: AnalysisState) -> AnalysisState:
         # Use user config directly, but merge with top-level config for shared settings
         config = user_config.copy()
 
-        # Merge top-level config settings (drive_folder_ids, document_types) if present
+        # Merge top-level config settings (drive_folder_ids, document_types) if present (optional, deprecated)
         if "drive_folder_ids" in centralized_config:
             config["drive_folder_ids"] = centralized_config["drive_folder_ids"]
         if "document_types" in centralized_config:
@@ -348,16 +463,16 @@ def load_config(state: AnalysisState) -> AnalysisState:
     state["start_date"] = config.get("start_date", state.get("start_date", "2025-07-01"))
     state["end_date"] = config.get("end_date", state.get("end_date", "2025-12-31"))
     state["analysis_period"] = _format_analysis_period(state["start_date"], state["end_date"])
+    # drive_folder_ids and document_types are now optional (deprecated)
+    # If not provided, all Google Docs in the user's Drive will be searched
     state["drive_folder_ids"] = config.get("drive_folder_ids", [])
-    state["document_types"] = config.get(
-        "document_types", ["Technical Design Doc", "TDD", "Design Document"]
-    )
+    state["document_types"] = config.get("document_types", [])
 
     return state
 
 
 def fetch_gdocs_data(state: AnalysisState) -> AnalysisState:
-    """Fetch Google Docs from specified folders and convert to markdown."""
+    """Fetch Google Docs from user's Drive and convert to markdown."""
     if state.get("error"):
         return state
 
@@ -367,10 +482,6 @@ def fetch_gdocs_data(state: AnalysisState) -> AnalysisState:
     end_date = state["end_date"]
     output_dir_str = state.get("output_dir") or "reports"
     output_dir = Path(output_dir_str)
-
-    if not drive_folder_ids:
-        state["error"] = "No drive_folder_ids specified in config"
-        return state
 
     if RICH_AVAILABLE:
         console = Console()
@@ -387,24 +498,48 @@ def fetch_gdocs_data(state: AnalysisState) -> AnalysisState:
         state["error"] = f"Failed to authenticate with Google Drive: {str(e)}"
         return state
 
-    # Collect all documents from all folders
-    all_documents = []
-    for folder_id in drive_folder_ids:
+    # If drive_folder_ids are specified, use legacy folder-based search (deprecated)
+    # Otherwise, search all Google Docs in user's Drive
+    if drive_folder_ids:
         if RICH_AVAILABLE:
-            console.print(f"  [dim]Scanning folder {folder_id}...[/dim]")
+            console.print("  [yellow]⚠️  Using legacy folder-based search (deprecated)[/yellow]")
         else:
-            print(f"  Scanning folder {folder_id}...")
+            print("  ⚠️  Using legacy folder-based search (deprecated)")
 
-        docs = _list_documents_in_folder(service, folder_id, start_date, end_date, document_types)
-        all_documents.extend(docs)
+        # Legacy: Collect all documents from specified folders
+        all_documents = []
+        for folder_id in drive_folder_ids:
+            if RICH_AVAILABLE:
+                console.print(f"  [dim]Scanning folder {folder_id}...[/dim]")
+            else:
+                print(f"  Scanning folder {folder_id}...")
+
+            # Use the old function for backward compatibility
+            docs = _list_documents_in_folder_legacy(
+                service, folder_id, start_date, end_date, document_types
+            )
+            all_documents.extend(docs)
+
+            if RICH_AVAILABLE:
+                console.print(f"  [green]Found {len(docs)} documents[/green]")
+            else:
+                print(f"  Found {len(docs)} documents")
+    else:
+        # New: Search all Google Docs in user's Drive
+        if RICH_AVAILABLE:
+            console.print("  [dim]Searching all Google Docs in your Drive...[/dim]")
+        else:
+            print("  Searching all Google Docs in your Drive...")
+
+        all_documents = _list_all_documents(service, start_date, end_date)
 
         if RICH_AVAILABLE:
-            console.print(f"  [green]Found {len(docs)} documents[/green]")
+            console.print(f"  [green]Found {len(all_documents)} documents[/green]")
         else:
-            print(f"  Found {len(docs)} documents")
+            print(f"  Found {len(all_documents)} documents")
 
     if not all_documents:
-        state["error"] = "No documents found in specified folders for the date range"
+        state["error"] = f"No Google Docs found for the date range ({start_date} to {end_date})"
         return state
 
     # Create artifacts directory
