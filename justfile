@@ -380,5 +380,43 @@ add-report:
     @echo "📝 Adding new user to config.json..."
     @uv run python scripts/add-report
 
+# Clean analysis reports for a specified period
+clean PERIOD:
+    @echo "🧹 Cleaning analysis reports for period {{PERIOD}}..."
+    @uv run python scripts/clean-reports {{PERIOD}}
+
+# Run all analyses for all users in parallel
+analyze-all PERIOD:
+    @echo "🚀 Running all analyses for period {{PERIOD}}..."
+    @uv run python scripts/analyze-all {{PERIOD}}
+    @echo ""
+    @echo "🔍 Calibrating reports for fairness..."
+    @uv run python scripts/calibrate-reports {{PERIOD}}
+    @echo ""
+    @echo "📦 Generating review packages..."
+    @uv run python scripts/generate-review-package {{PERIOD}}
+    @echo ""
+    @echo "✅ Complete! Review packages available in reports/*/{{PERIOD}}/review-package.md"
+
+# Calibrate existing reports for a period
+calibrate PERIOD:
+    @echo "🔍 Calibrating reports for period {{PERIOD}}..."
+    @uv run python scripts/calibrate-reports {{PERIOD}}
+
+# Generate review packages for a period
+review-package PERIOD:
+    @echo "📦 Generating review packages for period {{PERIOD}}..."
+    @uv run python scripts/generate-review-package {{PERIOD}}
+
+# Convert PDF files to markdown
+convert-pdfs:
+    @echo "📄 Converting PDF files to markdown..."
+    @uv run python scripts/convert-pdfs
+
+# Convert PDF files in a specific path
+convert-pdfs-path PATH:
+    @echo "📄 Converting PDF files in {{PATH}}..."
+    @uv run python scripts/convert-pdfs --path {{PATH}}
+
 # Note: validate.py and fetch scripts have been removed
 # Use gh-analyze for all analysis tasks

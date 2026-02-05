@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""
+Run all analysis tools for all users in config.json for a specified period.
+
+Usage:
+    python scripts/analyze-all <period>
+    e.g., python scripts/analyze-all 2025H2
+"""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+# Add parent directory to path so we can import eiq modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from eiq.shared.cli_utils import slugify
+
+
+def run_analysis(user, analysis_type, period):
+    """Run a single analysis command."""
+    name_slug = slugify(user.get("name", user.get("username", "")))
+    script_map = {
+        "gh": "scripts/gh-analyze",
+        "jira": "scripts/jira-analyze",
+        "gdocs": "scripts/gdocs-analyze",
+    }
+
+    script = script_map.get(analysis_type)
+    if not script:
+        return {
+            "user": user.get("name"),
+            "type": analysis_type,
+            "status": "error",
+            "error": "Unknown analysis type",
+        }
+
+    try:
+        # Run the analysis script using uv run
+        # Don't capture output so progress bars are visible
+        result = subprocess.run(
+            ["uv", "run", "python", script, "-n", name_slug, "-p", period],
+            timeout=1800,  # 30 minute timeout
+        )
+
+        if result.returncode == 0:
+            return {
+                "user": user.get("name"),
+                "type": analysis_type,
+                "status": "success",
+            }
+        else:
+            return {
+                "user": user.get("name"),
+                "type": analysis_type,
+                "status": "error",
+                "error": f"Analysis failed with exit code {result.returncode}",
+            }
+    except subprocess.TimeoutExpired:
+        return {
+            "user": user.get("name"),
+            "type": analysis_type,
+            "status": "timeout",
+            "error": "Analysis timed out after 30 minutes",
+        }
+    except Exception as e:
+        return {
+            "user": user.get("name"),
+            "type": analysis_type,
+            "status": "error",
+            "error": str(e)[:200],
+        }
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python scripts/analyze-all <period>")
+        print("Example: python scripts/analyze-all 2025H2")
+        sys.exit(1)
+
+    period = sys.argv[1]
+
+    # Load config
+    config_path = Path("config.json")
+    if not config_path.exists():
+        print("❌ config.json not found")
+        sys.exit(1)
+
+    with open(config_path) as f:
+        config = json.load(f)
+
+    users = config.get("users", [])
+    if not users:
+        print("❌ No users found in config.json")
+        sys.exit(1)
+
+    print(f"🚀 Running analyses for {len(users)} users for period {period}")
+    print("=" * 60)
+
+    # Analysis types to run
+    analysis_types = ["gh", "jira", "gdocs"]
+
+    # Run all analyses sequentially
+    results = []
+    for user in users:
+        user_name = user.get("name")
+        print(f"\n{'=' * 60}")
+        print(f"📊 Processing {user_name}")
+        print(f"{'=' * 60}")
+        for analysis_type in analysis_types:
+            print(f"\n🔍 Running {analysis_type} analysis for {user_name}...")
+            result = run_analysis(user, analysis_type, period)
+            results.append(result)
+            status_icon = "✅" if result["status"] == "success" else "❌"
+            print(
+                f"\n{status_icon} {analysis_type} analysis {'completed' if result['status'] == 'success' else 'failed'}"
+            )
+            if result["status"] != "success":
+                error_msg = result.get("error", "Unknown error")
+                print(f"   Error: {error_msg}")
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("Summary:")
+    success_count = sum(1 for r in results if r["status"] == "success")
+    error_count = len(results) - success_count
+    print(f"✅ Successful: {success_count}")
+    print(f"❌ Failed: {error_count}")
+
+    if error_count > 0:
+        print("\nFailed analyses:")
+        for r in results:
+            if r["status"] != "success":
+                print(f"  - {r['user']} - {r['type']}: {r.get('error', 'Unknown error')}")
+
+    print(f"\n✅ All analyses complete for period {period}")
+
+
+if __name__ == "__main__":
+    main()

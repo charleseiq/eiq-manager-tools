@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""
+Remove all analysis.md files for a specified period.
+
+Usage:
+    python scripts/clean-reports <period>
+    e.g., python scripts/clean-reports 2025H2
+"""
+
+import sys
+from pathlib import Path
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python scripts/clean-reports <period>")
+        print("Example: python scripts/clean-reports 2025H2")
+        sys.exit(1)
+
+    period = sys.argv[1]
+    reports_dir = Path("reports")
+
+    if not reports_dir.exists():
+        print(f"Reports directory not found: {reports_dir}")
+        sys.exit(1)
+
+    # Analysis file patterns
+    analysis_files = [
+        "jira-analysis.md",
+        "github-review-analysis.md",
+        "gdocs-analysis.md",
+    ]
+
+    removed_count = 0
+    artifacts_removed_count = 0
+    for user_dir in reports_dir.iterdir():
+        if not user_dir.is_dir():
+            continue
+
+        period_dir = user_dir / period
+        if not period_dir.exists():
+            continue
+
+        # Remove analysis files
+        for analysis_file in analysis_files:
+            file_path = period_dir / analysis_file
+            if file_path.exists():
+                file_path.unlink()
+                removed_count += 1
+                print(f"✓ Removed {file_path}")
+
+        # Remove artifacts directory
+        artifacts_dir = period_dir / "artifacts"
+        if artifacts_dir.exists() and artifacts_dir.is_dir():
+            # Count files before removal
+            artifact_files = list(artifacts_dir.rglob("*"))
+            artifact_files = [f for f in artifact_files if f.is_file()]
+            artifacts_removed_count += len(artifact_files)
+
+            # Remove the entire artifacts directory
+            import shutil
+
+            shutil.rmtree(artifacts_dir)
+            print(f"✓ Removed artifacts directory: {artifacts_dir} ({len(artifact_files)} files)")
+
+    print(f"\n✅ Removed {removed_count} analysis files for period {period}")
+    if artifacts_removed_count > 0:
+        print(f"✅ Removed {artifacts_removed_count} artifact files for period {period}")
+
+
+if __name__ == "__main__":
+    main()

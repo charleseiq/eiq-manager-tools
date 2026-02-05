@@ -196,6 +196,67 @@ just gdocs-analyze -n varun-sundar -p 2025H2
 
 📖 **[Full Documentation →](eiq/gdocs-analysis/README.md)**
 
+## Batch Operations
+
+### Clean Analysis Reports
+
+Remove all analysis reports for a specified period:
+
+```bash
+just clean 2025H2
+```
+
+This removes `jira-analysis.md`, `github-review-analysis.md`, and `gdocs-analysis.md` files for all users in the specified period.
+
+### Run All Analyses
+
+Run all three analysis tools for all users in parallel:
+
+```bash
+just analyze-all 2025H2
+```
+
+This command:
+1. Runs `gh-analyze`, `jira-analyze`, and `gdocs-analyze` for all users in `config.json` in parallel
+2. Calibrates all reports to ensure fair benchmarking across users and levels
+3. Generates holistic review packages (`review-package.md`) for each user
+
+**Note:** This can take significant time depending on the number of users and data volume. Progress is shown for each analysis.
+
+### Calibrate Reports
+
+After running analyses, calibrate reports to ensure fairness:
+
+```bash
+just calibrate 2025H2
+```
+
+This creates calibrated versions (`*-calibrated.md`) of each analysis report that:
+- Ensure evaluations are appropriate for each engineer's level
+- Maintain consistency across engineers at the same level
+- Account for level-specific expectations from the organizational ladder
+- Provide fair and constructive feedback
+
+### Generate Review Packages
+
+Generate holistic review packages that combine all analyses:
+
+```bash
+just review-package 2025H2
+```
+
+This creates `review-package.md` files for each user that include:
+- All analysis reports (calibrated versions if available)
+- Self-reviews from the `notes/` folder
+- 1:1 meeting notes (`lattice.md` if available)
+- Level-appropriate evaluation criteria
+- Structured answers to review questions:
+  - Key achievements and impact
+  - Challenges and improvement suggestions
+  - Development focus areas
+  - Ratings for Technical Skills, Delivery, Communication/Collaboration, Leadership
+  - Overall performance rating
+
 ## Common Usage Patterns
 
 ### Period Formats
@@ -234,6 +295,18 @@ All tools generate reports in a consistent structure:
 reports/
 └── <slugified-name>/
     └── <period>/
+        ├── jira-analysis.md
+        ├── jira-analysis-calibrated.md (after calibration)
+        ├── github-review-analysis.md
+        ├── github-review-analysis-calibrated.md (after calibration)
+        ├── gdocs-analysis.md
+        ├── gdocs-analysis-calibrated.md (after calibration)
+        ├── review-package.md (after review-package generation)
+        ├── artifacts/ (Google Docs markdown conversions)
+        └── notes/
+            ├── README.md
+            ├── lattice.md (1:1 meeting notes)
+            └── *.md (self-reviews, feedback, etc.)
         ├── <tool>-analysis.md    # Main analysis report
         ├── notes/                 # For ad-hoc markdown files, self-reviews, and feedback
         │   ├── README.md         # Explains the purpose of the notes folder

@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""
+Generate holistic review package for all users in a period.
+
+This script combines:
+- All analysis reports (calibrated if available)
+- Self-reviews from notes folder
+- Ladder criteria for their level
+- Generates review-package.md with structured questions
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+# Add parent directory to path so we can import eiq modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from eiq.shared.cli_utils import slugify
+
+# Use new langchain-google-genai package (supports Vertex AI)
+# Set Vertex AI mode before importing
+os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError:
+    # Fallback to deprecated package if new one not available
+    try:
+        from langchain_google_vertexai import (  # type: ignore[import-untyped]
+            ChatVertexAI as ChatGoogleGenerativeAI,
+        )
+    except ImportError:
+        print("❌ langchain_google_genai or langchain_google_vertexai not available")
+        print("   Install with: uv sync")
+        sys.exit(1)
+
+# Try to import rich
+try:
+    from rich.console import Console
+
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+    Console = None  # type: ignore[assignment]
+
+
+def load_user_data(user, period):
+    """Load all data for a user: analyses, self-reviews, ladder criteria."""
+    user_slug = slugify(user.get("name", user.get("username", "")))
+    period_dir = Path(f"reports/{user_slug}/{period}")
+
+    if not period_dir.exists():
+        return None
+
+    data = {
+        "user": user.get("name"),
+        "level": user.get("level"),
+        "analyses": {},
+        "self_reviews": [],
+        "lattice_notes": None,
+    }
+
+    # Load analysis reports (prefer calibrated versions)
+    analysis_files = [
+        ("jira-analysis.md", "jira-analysis-calibrated.md", "JIRA"),
+        ("github-review-analysis.md", "github-review-analysis-calibrated.md", "GitHub"),
+        ("gdocs-analysis.md", "gdocs-analysis-calibrated.md", "Google Docs"),
+    ]
+
+    for original, calibrated, label in analysis_files:
+        # Try calibrated first, fallback to original
+        file_path = period_dir / calibrated
+        if not file_path.exists():
+            file_path = period_dir / original
+
+        if file_path.exists():
+            with open(file_path, encoding="utf-8") as f:
+                data["analyses"][label] = f.read()
+
+    # Load self-reviews from notes folder
+    notes_dir = period_dir / "notes"
+    if notes_dir.exists():
+        for note_file in notes_dir.glob("*.md"):
+            if note_file.name not in ["lattice.md", "README.md"]:
+                with open(note_file, encoding="utf-8") as f:
+                    data["self_reviews"].append({"filename": note_file.name, "content": f.read()})
+
+        # Load lattice notes if available
+        lattice_file = notes_dir / "lattice.md"
+        if lattice_file.exists():
+            with open(lattice_file, encoding="utf-8") as f:
+                data["lattice_notes"] = f.read()
+
+    return data
+
+
+def load_ladder_criteria(level):
+    """Load ladder criteria for a level."""
+    try:
+        from eiq.shared.ladder_utils import format_level_criteria_for_prompt
+
+        ladder_file = Path("ladder/Matrix.html")
+        if ladder_file.exists():
+            return format_level_criteria_for_prompt(level, ladder_file, include_next_level=True)
+    except (ImportError, Exception):
+        pass
+    return ""
+
+
+def generate_review_package(user_data, period, project, location):
+    """Generate review package using AI."""
+    if RICH_AVAILABLE:
+        console = Console()
+        console.print(f"📝 [cyan]Generating review package for {user_data['user']}...[/cyan]")
+    else:
+        print(f"📝 Generating review package for {user_data['user']}...")
+
+    # Set quota project
+    os.environ["GOOGLE_CLOUD_QUOTA_PROJECT"] = project
+
+    # Initialize Vertex AI
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-pro",
+        project=project,
+        location=location,
+        temperature=0.3,
+    )
+
+    # Build context
+    context_parts = [f"# Review Package for {user_data['user']} (Level {user_data['level']})\n"]
+    context_parts.append(f"**Review Period**: {period}\n")
+
+    # Add ladder criteria
+    ladder_criteria = load_ladder_criteria(user_data["level"])
+    if ladder_criteria:
+        context_parts.append("## Level Expectations\n")
+        context_parts.append(ladder_criteria)
+        context_parts.append("\n")
+
+    # Add analyses
+    if user_data["analyses"]:
+        context_parts.append("## Analysis Reports\n\n")
+        for label, content in user_data["analyses"].items():
+            context_parts.append(f"### {label} Analysis\n\n")
+            context_parts.append(content[:8000])  # Limit length
+            context_parts.append("\n\n---\n\n")
+
+    # Add self-reviews
+    if user_data["self_reviews"]:
+        context_parts.append("## Self-Reviews\n\n")
+        for review in user_data["self_reviews"]:
+            context_parts.append(f"### {review['filename']}\n\n")
+            context_parts.append(review["content"][:5000])
+            context_parts.append("\n\n---\n\n")
+
+    # Add 1:1 notes
+    if user_data["lattice_notes"]:
+        context_parts.append("## 1:1 Meeting Notes\n\n")
+        context_parts.append(user_data["lattice_notes"][:5000])
+        context_parts.append("\n\n---\n\n")
+
+    context = "\n".join(context_parts)
+
+    # Build prompt
+    prompt = f"""Based on the following information, generate a comprehensive review package for {user_data["user"]} (Level {user_data["level"]}) for the period {period}.
+
+{context}
+
+## Review Questions
+
+Please provide thoughtful, specific answers to each question below. Base your answers on:
+- The analysis reports provided
+- The engineer's self-reviews and reflections
+- 1:1 meeting notes and discussions
+- Level-appropriate expectations from the organizational ladder
+- Fair benchmarking against peers at the same level
+
+---
+
+**What are 1-2 key achievements of this individual during the review period, and how have these contributions positively impacted the business, team, or their professional development?** *
+
+**What are 1-2 specific challenges or blockers this person faced over the previous period. What improvements or suggestions do you have to enhance their continued development and effectiveness?** *
+
+**What key skills should this individual focus on developing in the coming period to enhance their performance and career growth? How will these skills benefit their role, team, and organization?** *
+
+**How would you rate this person on Technical Skills over the last 6 months?** *
+
+**How would you rate this person on Delivery over the last 6 months?** *
+
+**How would you rate this person on Feedback, Communication, and Collaboration over the last 6 months?** *
+
+**How would you rate this person on Leadership over the last 6 months?** *
+
+**Please rate the overall performance of this individual over the past 6 months** *
+
+**If you would like, please share any additional thoughts.**
+
+---
+
+Format your response as a well-structured markdown document. Use the exact question format above with clear sections. Address their responses in self-reviews and ensure evaluations align with their level expectations from the ladder.
+
+The review package should follow this exact structure:
+
+---
+What are 1-2 key achievements of this individual during the review period, and how have these contributions positively impacted the business, team, or their professional development. *
+
+[Your answer here]
+
+What are 1-2 specific challenges or blockers this person faced over the previous period. What improvements or suggestions do you have to enhance their continued development and effectiveness? *
+
+[Your answer here]
+
+What key skills should this individual focus on developing in the coming period to enhance their performance and career growth? How will these skills benefit their role, team, and organization? *
+
+[Your answer here]
+
+How would you rate this person on Technical Skills over the last 6 months? *
+
+[Your answer here]
+
+How would you rate this person on Delivery over the last 6 months? *
+
+[Your answer here]
+
+How would you rate this person on Feedback, Communication, and Collaboration over the last 6 months? *
+
+[Your answer here]
+
+How would you rate this person on Leadership over the last 6 months? *
+
+[Your answer here]
+
+Please rate the overall performance of this individual over the past 6 months *
+
+[Your answer here]
+
+If you would like, please share any additional thoughts.
+
+[Your answer here]
+---
+"""
+
+    messages = [
+        SystemMessage(
+            content="You are an expert at writing comprehensive, fair, and constructive performance reviews. You evaluate engineers based on their level expectations and provide actionable feedback."
+        ),
+        HumanMessage(content=prompt),
+    ]
+
+    try:
+        response = llm.invoke(messages)
+        return response.content
+    except Exception as e:
+        print(f"❌ Error generating review package: {e}")
+        return None
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python scripts/generate-review-package <period>")
+        print("Example: python scripts/generate-review-package 2025H2")
+        sys.exit(1)
+
+    period = sys.argv[1]
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4")
+
+    if not project:
+        print("❌ GOOGLE_CLOUD_PROJECT environment variable required")
+        sys.exit(1)
+
+    # Load config
+    with open("config.json") as f:
+        config = json.load(f)
+
+    users = config.get("users", [])
+    if not users:
+        print("❌ No users found in config.json")
+        sys.exit(1)
+
+    print(f"📦 Generating review packages for {len(users)} users")
+    print("=" * 60)
+
+    for user in users:
+        user_data = load_user_data(user, period)
+        if not user_data:
+            print(f"⏭️  Skipping {user.get('name')} - no data found for {period}")
+            continue
+
+        review_package = generate_review_package(user_data, period, project, location)
+        if not review_package:
+            print(f"❌ Failed to generate review package for {user.get('name')}")
+            continue
+
+        # Save review package
+        user_slug = slugify(user.get("name", user.get("username", "")))
+        package_path = Path(f"reports/{user_slug}/{period}/review-package.md")
+        package_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(package_path, "w", encoding="utf-8") as f:
+            f.write(review_package)
+
+        print(f"✅ Generated review package: {package_path}")
+
+    print(f"\n✅ Review package generation complete for period {period}")
+
+
+if __name__ == "__main__":
+    main()

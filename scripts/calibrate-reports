@@ -1,0 +1,316 @@
+#!/usr/bin/env python3
+"""
+Calibrate analysis reports to ensure fair benchmarking across users and levels.
+
+This script:
+1. Reads all analysis.md files for a period
+2. Uses AI to evaluate fairness across users and levels
+3. Creates calibrated versions of each report
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+# Add parent directory to path so we can import eiq modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from eiq.shared.cli_utils import slugify
+
+# Use new langchain-google-genai package (supports Vertex AI)
+# Set Vertex AI mode before importing
+os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError:
+    # Fallback to deprecated package if new one not available
+    try:
+        from langchain_google_vertexai import (  # type: ignore[import-untyped]
+            ChatVertexAI as ChatGoogleGenerativeAI,
+        )
+    except ImportError:
+        print("❌ langchain_google_genai or langchain_google_vertexai not available")
+        print("   Install with: uv sync")
+        sys.exit(1)
+
+# Try to import rich
+try:
+    from rich.console import Console
+
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+    Console = None  # type: ignore[assignment]
+
+
+def load_all_analyses(period):
+    """Load all analysis reports for a period."""
+    reports_dir = Path("reports")
+    analyses = []
+
+    # Load config to get user levels
+    with open("config.json") as f:
+        config = json.load(f)
+
+    user_levels = {}
+    for user in config.get("users", []):
+        name_slug = slugify(user.get("name", user.get("username", "")))
+        user_levels[name_slug] = {
+            "name": user.get("name"),
+            "level": user.get("level"),
+        }
+
+    analysis_files = [
+        ("jira-analysis.md", "JIRA"),
+        ("github-review-analysis.md", "GitHub"),
+        ("gdocs-analysis.md", "Google Docs"),
+    ]
+
+    for user_dir in reports_dir.iterdir():
+        if not user_dir.is_dir():
+            continue
+
+        user_slug = user_dir.name
+        if user_slug not in user_levels:
+            continue
+
+        period_dir = user_dir / period
+        if not period_dir.exists():
+            continue
+
+        user_info = user_levels[user_slug]
+        user_analyses = []
+
+        for filename, analysis_type in analysis_files:
+            file_path = period_dir / filename
+            if file_path.exists():
+                with open(file_path, encoding="utf-8") as f:
+                    content = f.read()
+                user_analyses.append(
+                    {
+                        "type": analysis_type,
+                        "content": content,
+                        "filename": filename,
+                    }
+                )
+
+        if user_analyses:
+            analyses.append(
+                {
+                    "user": user_info["name"],
+                    "user_slug": user_slug,
+                    "level": user_info["level"],
+                    "analyses": user_analyses,
+                }
+            )
+
+    return analyses
+
+
+def calibrate_analyses(analyses, period, project, location):
+    """Use AI to calibrate analyses for fairness."""
+    if RICH_AVAILABLE:
+        console = Console()
+        console.print("🔍 [cyan]Calibrating analyses for fairness...[/cyan]")
+    else:
+        print("🔍 Calibrating analyses for fairness...")
+
+    # Set quota project
+    os.environ["GOOGLE_CLOUD_QUOTA_PROJECT"] = project
+
+    # Initialize Vertex AI
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-pro",
+        project=project,
+        location=location,
+        temperature=0.3,
+    )
+
+    # Prepare calibration prompt
+    calibration_prompt = """You are an expert at evaluating engineering performance reviews for fairness and consistency.
+
+Your task is to review the following analysis reports and ensure:
+1. **Fair benchmarking across levels**: Evaluations should be appropriate for each engineer's level (L4 vs L5 expectations)
+2. **Consistent standards**: Similar performance should receive similar ratings across engineers
+3. **Level-appropriate expectations**: L4 engineers should be evaluated against L4 criteria, L5 against L5 criteria
+4. **Fair comparison**: When comparing engineers, account for their different levels and expectations
+
+## Analysis Reports:
+
+"""
+
+    for analysis_group in analyses:
+        calibration_prompt += (
+            f"\n### {analysis_group['user']} (Level {analysis_group['level']})\n\n"
+        )
+        for analysis in analysis_group["analyses"]:
+            calibration_prompt += f"#### {analysis['type']} Analysis\n\n"
+            calibration_prompt += analysis["content"][:5000]  # Limit content length
+            calibration_prompt += "\n\n---\n\n"
+
+    calibration_prompt += """
+## Your Task:
+
+For each engineer, review their analyses and create a calibrated version that:
+1. Ensures evaluations are appropriate for their level
+2. Maintains consistency with other engineers at the same level
+3. Accounts for level-specific expectations from the organizational ladder
+4. Provides fair and constructive feedback
+
+For each analysis type (JIRA, GitHub, Google Docs), provide:
+- A calibrated version that ensures fairness
+- Brief notes on any adjustments made for calibration
+- Confirmation that the evaluation is appropriate for the engineer's level
+
+Format your response as JSON with this structure:
+{
+  "calibrated_reports": [
+    {
+      "user": "Engineer Name",
+      "level": "L4",
+      "analyses": [
+        {
+          "type": "JIRA",
+          "calibrated_content": "...",
+          "calibration_notes": "..."
+        },
+        ...
+      ]
+    },
+    ...
+  ]
+}
+"""
+
+    messages = [
+        SystemMessage(
+            content="You are an expert at evaluating engineering performance reviews for fairness, consistency, and level-appropriateness."
+        ),
+        HumanMessage(content=calibration_prompt),
+    ]
+
+    try:
+        response = llm.invoke(messages)
+        return response.content
+    except Exception as e:
+        print(f"❌ Error during calibration: {e}")
+        return None
+
+
+def save_calibrated_reports(calibration_result, period):
+    """Save calibrated reports to files."""
+    import json as json_lib
+
+    try:
+        # Try to parse as JSON
+        calibration_data = json_lib.loads(calibration_result)
+    except (json_lib.JSONDecodeError, ValueError):
+        # If not JSON, try to extract JSON from markdown code blocks
+        import re
+
+        json_match = re.search(r"```json\n(.*?)\n```", calibration_result, re.DOTALL)
+        if json_match:
+            try:
+                calibration_data = json_lib.loads(json_match.group(1))
+            except (json_lib.JSONDecodeError, ValueError):
+                # Fallback: try to find JSON object
+                json_match = re.search(r"\{.*\}", calibration_result, re.DOTALL)
+                if json_match:
+                    try:
+                        calibration_data = json_lib.loads(json_match.group(0))
+                    except (json_lib.JSONDecodeError, ValueError):
+                        print("❌ Could not parse calibration result as JSON")
+                        return False
+                else:
+                    print("❌ Could not parse calibration result as JSON")
+                    return False
+        else:
+            # Fallback: try to find JSON object
+            json_match = re.search(r"\{.*\}", calibration_result, re.DOTALL)
+            if json_match:
+                try:
+                    calibration_data = json_lib.loads(json_match.group(0))
+                except (json_lib.JSONDecodeError, ValueError):
+                    print("❌ Could not parse calibration result as JSON")
+                    return False
+            else:
+                print("❌ Could not parse calibration result as JSON")
+                return False
+
+    saved_count = 0
+    for report_group in calibration_data.get("calibrated_reports", []):
+        user = report_group.get("user")
+        user_slug = slugify(user)
+
+        for analysis in report_group.get("analyses", []):
+            analysis_type = analysis.get("type")
+            calibrated_content = analysis.get("calibrated_content", "")
+
+            if not calibrated_content:
+                continue
+
+            # Map analysis type to filename
+            filename_map = {
+                "JIRA": "jira-analysis-calibrated.md",
+                "GitHub": "github-review-analysis-calibrated.md",
+                "Google Docs": "gdocs-analysis-calibrated.md",
+            }
+
+            filename = filename_map.get(analysis_type)
+            if not filename:
+                continue
+
+            # Save calibrated report
+            report_path = Path(f"reports/{user_slug}/{period}/{filename}")
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(calibrated_content)
+
+            saved_count += 1
+            print(f"✅ Saved calibrated report: {report_path}")
+
+    return saved_count > 0
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python scripts/calibrate-reports <period>")
+        print("Example: python scripts/calibrate-reports 2025H2")
+        sys.exit(1)
+
+    period = sys.argv[1]
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4")
+
+    if not project:
+        print("❌ GOOGLE_CLOUD_PROJECT environment variable required")
+        sys.exit(1)
+
+    # Load all analyses
+    analyses = load_all_analyses(period)
+    if not analyses:
+        print(f"❌ No analyses found for period {period}")
+        sys.exit(1)
+
+    print(f"📊 Found analyses for {len(analyses)} users")
+
+    # Calibrate
+    calibration_result = calibrate_analyses(analyses, period, project, location)
+    if not calibration_result:
+        print("❌ Calibration failed")
+        sys.exit(1)
+
+    # Save calibrated reports
+    if save_calibrated_reports(calibration_result, period):
+        print(f"\n✅ Calibration complete for period {period}")
+    else:
+        print("\n❌ Failed to save calibrated reports")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""
+Convert all PDF files in reports directories to markdown.
+
+Usage:
+    python scripts/convert-pdfs [--path PATH]
+
+If --path is not specified, converts all PDFs found in reports/ directories.
+If --path is specified, converts PDFs in that specific directory.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+try:
+    from markitdown import MarkItDown
+except ImportError:
+    print("❌ markitdown not available. Install with: uv sync")
+    sys.exit(1)
+
+# Try to import rich
+try:
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+    Console = None  # type: ignore[assignment]
+    Progress = None  # type: ignore[assignment]
+    SpinnerColumn = None  # type: ignore[assignment]
+    TextColumn = None  # type: ignore[assignment]
+
+
+def convert_pdf_to_markdown(pdf_path: Path, output_path: Path | None = None) -> bool:
+    """Convert a PDF file to markdown."""
+    try:
+        md_converter = MarkItDown()
+        result = md_converter.convert(str(pdf_path))
+
+        # Ensure we have a string
+        markdown_content = str(result) if result else None
+
+        if not markdown_content:
+            return False
+
+        # Determine output path
+        if output_path is None:
+            output_path = pdf_path.with_suffix(".md")
+
+        # Write markdown file
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(markdown_content)
+
+        return True
+    except Exception as e:
+        if RICH_AVAILABLE:
+            console = Console()
+            console.print(f"  [red]❌ Failed to convert {pdf_path.name}: {e}[/red]")
+        else:
+            print(f"  ❌ Failed to convert {pdf_path.name}: {e}")
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert PDF files to markdown")
+    parser.add_argument(
+        "--path",
+        type=str,
+        help="Specific directory or file path to convert (default: all PDFs in reports/)",
+    )
+    args = parser.parse_args()
+
+    # Find PDF files
+    pdf_files = []
+
+    if args.path:
+        path = Path(args.path)
+        if path.is_file() and path.suffix.lower() == ".pdf":
+            pdf_files = [path]
+        elif path.is_dir():
+            pdf_files = list(path.rglob("*.pdf"))
+        else:
+            print(f"❌ Path not found: {path}")
+            sys.exit(1)
+    else:
+        # Find all PDFs in reports directory
+        reports_dir = Path("reports")
+        if not reports_dir.exists():
+            print("❌ Reports directory not found")
+            sys.exit(1)
+        pdf_files = list(reports_dir.rglob("*.pdf"))
+
+    if not pdf_files:
+        print("ℹ️  No PDF files found")
+        sys.exit(0)
+
+    print(f"📄 Found {len(pdf_files)} PDF file(s) to convert")
+    print("=" * 60)
+
+    converted = 0
+    failed = 0
+
+    if RICH_AVAILABLE:
+        console = Console()
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Converting PDFs...", total=len(pdf_files))
+            for pdf_file in pdf_files:
+                progress.update(task, description=f"Converting {pdf_file.name}...")
+                if convert_pdf_to_markdown(pdf_file):
+                    converted += 1
+                    console.print(f"  [green]✓[/green] {pdf_file.name}")
+                else:
+                    failed += 1
+                progress.update(task, advance=1)
+    else:
+        for pdf_file in pdf_files:
+            print(f"Converting {pdf_file.name}...", end=" ")
+            if convert_pdf_to_markdown(pdf_file):
+                converted += 1
+                print("✓")
+            else:
+                failed += 1
+                print("✗")
+
+    print("\n" + "=" * 60)
+    print(f"✅ Converted: {converted}")
+    if failed > 0:
+        print(f"❌ Failed: {failed}")
+    print("\n✅ Conversion complete! Markdown files saved next to PDFs.")
+
+
+if __name__ == "__main__":
+    main()

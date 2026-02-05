@@ -330,33 +330,34 @@ def _list_all_documents(
 
         # Filter by date range and verify ownership
         for item in all_items:
-            modified_time = datetime.fromisoformat(item["modifiedTime"].replace("Z", "+00:00"))
             created_time = datetime.fromisoformat(item["createdTime"].replace("Z", "+00:00"))
 
-            # Include if created or modified in date range
-            if start_dt <= modified_time <= end_dt or start_dt <= created_time <= end_dt:
-                # Filter by ownership - only include documents where user is an owner
-                owners = item.get("owners", [])
-                owner_emails = [
-                    owner.get("emailAddress", "") for owner in owners if owner.get("emailAddress")
-                ]
+            # Include only if created in date range (not just modified)
+            if not (start_dt <= created_time <= end_dt):
+                continue
 
-                # If user_email is specified, only include if user is an owner
-                if user_email:
-                    user_email_lower = user_email.lower()
-                    if not any(user_email_lower == email.lower() for email in owner_emails):
-                        continue
+            # Filter by ownership - only include documents where user is an owner
+            owners = item.get("owners", [])
+            owner_emails = [
+                owner.get("emailAddress", "") for owner in owners if owner.get("emailAddress")
+            ]
 
-                documents.append(
-                    {
-                        "id": item["id"],
-                        "name": item["name"],
-                        "created_time": item["createdTime"],
-                        "modified_time": item["modifiedTime"],
-                        "url": item["webViewLink"],
-                        "owners": [owner.get("displayName", "") for owner in owners],
-                    }
-                )
+            # If user_email is specified, only include if user is an owner
+            if user_email:
+                user_email_lower = user_email.lower()
+                if not any(user_email_lower == email.lower() for email in owner_emails):
+                    continue
+
+            documents.append(
+                {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "created_time": item["createdTime"],
+                    "modified_time": item["modifiedTime"],
+                    "url": item["webViewLink"],
+                    "owners": [owner.get("displayName", "") for owner in owners],
+                }
+            )
 
     except HttpError as error:
         print(f"An error occurred listing documents: {error}")
@@ -391,12 +392,11 @@ def _list_documents_in_folder_legacy(
         items = results.get("files", [])
 
         for item in items:
-            # Check if modified time is within date range
-            modified_time = datetime.fromisoformat(item["modifiedTime"].replace("Z", "+00:00"))
+            # Check if created time is within date range
             created_time = datetime.fromisoformat(item["createdTime"].replace("Z", "+00:00"))
 
-            # Include if created or modified in date range
-            if not (start_dt <= modified_time <= end_dt or start_dt <= created_time <= end_dt):
+            # Include only if created in date range (not just modified)
+            if not (start_dt <= created_time <= end_dt):
                 continue
 
             # Check if document name matches any document type pattern (if specified)
