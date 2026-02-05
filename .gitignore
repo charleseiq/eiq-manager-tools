@@ -27,3 +27,4 @@ Untitled
 *.swo
 *~
 .DS_Store
+.cursor/
