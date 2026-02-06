@@ -8,7 +8,7 @@ A comprehensive suite of CLI tools for analyzing engineering performance across 
 - **Level-Based Evaluation**: Automatic inclusion of organizational ladder criteria based on engineer level
 - **Fair Benchmarking**: Calibration ensures consistent evaluation across users and levels
 - **Holistic Reviews**: Combines quantitative metrics with qualitative feedback
-- **Batch Processing**: Run analyses for all users with a single command (`just analyze-all`) or individual analysis types (`-a` flag)
+- **Batch Processing**: Run all analyses (GitHub PR Review, JIRA Sprint & Epic, Google Docs, Notes Analysis) for all users with a single command (`just analyze-all`) or individual analysis types (`-a` flag)
 - **Human Context**: Notes folder for self-reviews, feedback, and additional context
 
 ## Overview
@@ -285,23 +285,23 @@ for all users in the specified period.
 
 ### Run All Analyses
 
-Run all three analysis tools for all users sequentially:
+Run all four analysis tools for all users sequentially:
 
 ```bash
 just analyze-all 2025H2
 ```
 
 This command:
-1. Runs `gh-analyze`, `jira-analyze`, and `gdocs-analyze` for all users in `config.json` sequentially (one at a time). You can also run individual analyses for all users using the `-a` flag: `just gh-analyze -a -p 2025H2`
+1. Runs `gh-analyze`, `jira-analyze`, `gdocs-analyze`, and `notes-analyze` for all users in `config.json` sequentially (one at a time). You can also run individual analyses for all users using the `-a` flag: `just gh-analyze -a -p 2025H2`
 2. Shows all progress bars and loading indicators from each analysis in real-time
 3. Calibrates all reports to ensure fair benchmarking across users and levels
-4. Analyzes notes files (`notes-analysis.md`) for each user
-5. Generates holistic review packages (`review-package.md`) for each user
+4. Generates holistic review packages (`review-package.md`) for each user that incorporate all analyses
 
 **Note:**
 - Analyses run sequentially to avoid rate limiting and provide clear progress visibility
 - This can take significant time depending on the number of users and data volume
 - All Rich progress bars from individual analyses are displayed in real-time
+- The review packages prioritize notes analysis (human-written feedback) over automated analyses
 - You can also run individual analysis types for all users using the `-a` flag:
   - `just gh-analyze -a -p 2025H2` - GitHub analysis for all users
   - `just jira-analyze -a -p 2025H2` - JIRA analysis for all users
@@ -336,8 +336,7 @@ just notes-analyze ariel-ledesma 2025H2
 # Analyze notes for all users
 just notes-analyze -a -p 2025H2
 
-# Or use the dedicated batch script
-# (automatically called by analyze-all)
+# Note: Notes analysis is automatically included in `just analyze-all`
 ```
 
 This creates `notes-analysis.md` files that:
@@ -369,13 +368,13 @@ just review-package -a -p 2025H2
 ```
 
 This creates `review-package.md` files for each user that include:
-- All analysis reports (updated in place by calibration if run)
-- Notes analysis (comprehensive analysis of all notes files)
-- 1:1 meeting notes (`lattice.md` if available)
-- Level-appropriate evaluation criteria
+- **All analysis reports** (GitHub PR Review, JIRA Sprint & Epic, Google Docs) - updated in place by calibration if run
+- **Notes analysis** (comprehensive analysis of all notes files) - **HIGHEST PRIORITY** - human-written feedback is weighted more heavily than automated analyses
+- **1:1 meeting notes** (`lattice.md` if available) - also high priority
+- Level-appropriate evaluation criteria (used for context, not explicitly mentioned)
 - Well-formatted markdown with proper headings and structure
 - Structured answers to review questions:
-  - Key achievements and impact
+  - Key achievements and impact (with specific project/initiative references)
   - Challenges and improvement suggestions
   - Development focus areas
   - Ratings for Technical Skills, Delivery, Communication/Collaboration, Leadership

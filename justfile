@@ -351,16 +351,14 @@ clean PERIOD:
 # Run all analyses for all users sequentially
 analyze-all PERIOD:
     @echo "🚀 Running all analyses for period {{PERIOD}}..."
+    @echo "   This includes: GitHub PR Review, JIRA Sprint & Epic, Google Docs, and Notes Analysis"
     @uv run python scripts/analyze-all {{PERIOD}}
     @echo ""
     @echo "🔍 Calibrating reports for fairness..."
     @uv run python scripts/calibrate-reports {{PERIOD}}
     @echo ""
-    @echo "📝 Analyzing notes files..."
-    @uv run python scripts/notes-analyze-all {{PERIOD}}
-    @echo ""
     @echo "📦 Generating review packages..."
-    @uv run python scripts/generate-review-package {{PERIOD}}
+    @just generate-review -a -p {{PERIOD}}
     @echo ""
     @echo "✅ Complete! Review packages available in reports/*/{{PERIOD}}/review-package.md"
 

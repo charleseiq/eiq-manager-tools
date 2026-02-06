@@ -25,6 +25,7 @@ def run_analysis(user, analysis_type, period):
         "gh": "scripts/gh-analyze",
         "jira": "scripts/jira-analyze",
         "gdocs": "scripts/gdocs-analyze",
+        "notes": "scripts/notes-analyze",
     }
 
     script = script_map.get(analysis_type)
@@ -97,7 +98,7 @@ def main():
     print("=" * 60)
 
     # Analysis types to run
-    analysis_types = ["gh", "jira", "gdocs"]
+    analysis_types = ["gh", "jira", "gdocs", "notes"]
 
     # Run all analyses sequentially
     results = []
@@ -111,12 +112,43 @@ def main():
             result = run_analysis(user, analysis_type, period)
             results.append(result)
             status_icon = "✅" if result["status"] == "success" else "❌"
+            analysis_name = {
+                "gh": "GitHub PR Review",
+                "jira": "JIRA Sprint & Epic",
+                "gdocs": "Google Docs",
+                "notes": "Notes Analysis",
+            }.get(analysis_type, analysis_type)
             print(
-                f"\n{status_icon} {analysis_type} analysis {'completed' if result['status'] == 'success' else 'failed'}"
+                f"\n{status_icon} {analysis_name} analysis {'completed' if result['status'] == 'success' else 'failed'}"
             )
             if result["status"] != "success":
                 error_msg = result.get("error", "Unknown error")
-                print(f"   Error: {error_msg}")
+                print(f"   ⚠️  Error: {error_msg}")
+                if result["status"] == "timeout":
+                    print(
+                        "   💡 Tip: Analysis timed out after 30 minutes. Consider running individually."
+                    )
+                elif "No Google Docs found" in error_msg or "No documents" in error_msg:
+                    print(
+                        "   💡 Tip: This is normal if the user has no Google Docs in the date range."
+                    )
+                elif "authentication" in error_msg.lower() or "token" in error_msg.lower():
+                    if analysis_type == "gdocs":
+                        print(
+                            "   💡 Tip: Check Google Drive authentication. Run 'just auth' to refresh tokens."
+                        )
+                    elif analysis_type == "jira":
+                        print(
+                            "   💡 Tip: Check JIRA authentication. Verify JIRA_TOKEN, EVOLUTIONIQ_EMAIL, JIRA_URL, and JIRA_PROJECT env vars."
+                        )
+                elif "No sprints found" in error_msg or "No issues found" in error_msg:
+                    print(
+                        "   💡 Tip: This is normal if the user has no JIRA activity in the date range."
+                    )
+                elif "JIRA" in error_msg or "jira" in error_msg.lower():
+                    print(
+                        "   💡 Tip: Verify JIRA credentials (JIRA_TOKEN, EVOLUTIONIQ_EMAIL, JIRA_URL, JIRA_PROJECT) are set correctly."
+                    )
 
     # Summary
     print("\n" + "=" * 60)
