@@ -5,7 +5,7 @@ Generate holistic review package for all users in a period.
 This script combines:
 - All analysis reports (calibrated if available)
 - Self-reviews from notes folder
-- Ladder criteria for their level
+- Expectations from organizational framework
 - Generates review-package.md with structured questions
 """
 
@@ -83,14 +83,14 @@ def generate_review_package(user_data, period, project, location):
     llm = get_vertex_ai_llm(project, location, temperature=0.3)
 
     # Build context
-    context_parts = [f"# Review Package for {user_data['user']} (Level {user_data['level']})\n"]
+    context_parts = [f"# Review Package for {user_data['user']}\n"]
     context_parts.append(f"**Review Period**: {period}\n")
 
-    # Add ladder criteria
+    # Add ladder criteria (used internally for context, but not explicitly mentioned)
     level = user_data.get("level", "")
     ladder_criteria = load_ladder_criteria(level, include_next_level=True) if level else ""
     if ladder_criteria:
-        context_parts.append("## Level Expectations\n")
+        context_parts.append("## Expectations\n")
         context_parts.append(ladder_criteria)
         context_parts.append("\n")
 
@@ -117,7 +117,7 @@ def generate_review_package(user_data, period, project, location):
     context = "\n".join(context_parts)
 
     # Build prompt
-    prompt = f"""You are writing an objective performance review for {user_data["user"]} (Level {user_data["level"]}) for the period {period}. The primary audience is the individual being reviewed, who will use this for constructive feedback and growth. The review will also be read by management, HR, and leadership.
+    prompt = f"""You are writing an objective performance review for {user_data["user"]} for the period {period}. The primary audience is the individual being reviewed, who will use this for constructive feedback and growth. The review will also be read by management, HR, and leadership.
 
 {context}
 
@@ -144,8 +144,8 @@ Base your review on:
 - Work contributions and impact (from the reports provided)
 - Self-reflections and feedback (from notes)
 - 1:1 conversations and discussions (from meeting notes)
-- Level-appropriate expectations from the organizational ladder
-- Fair comparison with peers at the same level
+- Expectations from the organizational framework
+- Fair comparison with peers
 
 **CRITICAL**: Write EXCLUSIVELY in third person. NEVER use "you", "your", "I", "we", or "our team". The individual is the primary consumer and needs honest, constructive feedback. Be realistic and direct while maintaining empathy.
 
@@ -169,7 +169,7 @@ Write this EXCLUSIVELY in third person with a constructive, empathetic, and hone
 
 What key skills should this individual focus on developing in the coming period to enhance their performance and career growth? How will these skills benefit their role, team, and organization?
 
-Write this EXCLUSIVELY in third person, framing development areas objectively. Use phrases like "{user_data["user"]} should focus on", "{user_data["user"]} would benefit from developing", "{user_data["user"]} needs to strengthen", "Key areas for growth include". Connect skills to their growth trajectory and level expectations. Be realistic and specific. NEVER use "you" or "your".
+Write this EXCLUSIVELY in third person, framing development areas objectively. Use phrases like "{user_data["user"]} should focus on", "{user_data["user"]} would benefit from developing", "{user_data["user"]} needs to strengthen", "Key areas for growth include". Connect skills to their growth trajectory and expectations. Be realistic and specific. NEVER use "you" or "your".
 
 ## Performance Ratings
 
@@ -211,7 +211,7 @@ Please rate the overall performance of this individual over the past 6 months
 
 **Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-Write a comprehensive, objective summary EXCLUSIVELY in third person that balances empathy with honesty. This should be a balanced assessment suitable for multiple audiences, with the individual as the primary consumer. Acknowledge contributions objectively while showing genuine appreciation. Be honest and realistic about performance level while demonstrating understanding and support for continued growth. Frame the assessment with care and respect for the individual's journey. NEVER use "you", "your", "I", "we", or "our team".
+Write a comprehensive, objective summary EXCLUSIVELY in third person that balances empathy with honesty. This should be a balanced assessment suitable for multiple audiences, with the individual as the primary consumer. Acknowledge contributions objectively while showing genuine appreciation. Be honest and realistic about performance while demonstrating understanding and support for continued growth. Frame the assessment with care and respect for the individual's journey. NEVER use "you", "your", "I", "we", or "our team".
 
 ## Additional Thoughts
 
