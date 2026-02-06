@@ -319,6 +319,9 @@ setup:
         uv run pre-commit install || echo "⚠️  Failed to install pre-commit hooks"; \
     fi
     @echo ""
+    @echo "8. Setting up just command completion..."
+    @bash scripts/setup-just-completion.sh
+    @echo ""
     @echo "Setup complete!"
     @echo ""
     @echo "Next steps:"
