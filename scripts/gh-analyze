@@ -53,14 +53,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-# Load environment variables from .env file if it exists
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    # python-dotenv not installed, skip loading .env
-    pass
+# Environment variables are loaded automatically by uv run --env-file .env
 
 # Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent.parent))

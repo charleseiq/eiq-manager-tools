@@ -1,4 +1,5 @@
 # Justfile for common tasks
+set dotenv-load
 
 # Check GitHub authentication (GITHUB_TOKEN, GOOGLE_CLOUD_PROJECT)
 _check_gh_auth:
@@ -77,11 +78,9 @@ _check_gdocs_auth:
 gh-analyze *args:
     #!/usr/bin/env bash
     set -e
-    # Load .env file if it exists
-    if [ -f .env ]; then set -a; source .env; set +a; fi
     # Check authentication
     just _check_gh_auth
-    # Use uv run to ensure dependencies are available
+    # Use uv run with .env file loading
     uv run ./scripts/gh-analyze {{args}}
 
 # Run JIRA sprint & epic analysis
@@ -89,11 +88,9 @@ gh-analyze *args:
 jira-analyze *args:
     #!/usr/bin/env bash
     set -e
-    # Load .env file if it exists
-    if [ -f .env ]; then set -a; source .env; set +a; fi
     # Check authentication
     just _check_jira_auth
-    # Use uv run to ensure dependencies are available
+    # Use uv run with .env file loading
     uv run ./scripts/jira-analyze {{args}}
 
 # Run Google Docs technical design analysis
@@ -101,18 +98,16 @@ jira-analyze *args:
 gdocs-analyze *args:
     #!/usr/bin/env bash
     set -e
-    # Load .env file if it exists
-    if [ -f .env ]; then set -a; source .env; set +a; fi
     # Check authentication
     just _check_gdocs_auth
-    # Use uv run to ensure dependencies are available
+    # Use uv run with .env file loading
     uv run ./scripts/gdocs-analyze {{args}}
 
 # Authenticate with Google Cloud for Vertex AI access
 auth:
     #!/usr/bin/env bash
     set -e
-    # Load .env file if it exists
+    # Load .env file for environment variables
     if [ -f .env ]; then set -a; source .env; set +a; fi
     
     echo "🔐 Setting up Google Cloud authentication..."
@@ -224,8 +219,6 @@ auth:
 generate-drive-token:
     #!/usr/bin/env bash
     set -e
-    # Load .env file if it exists
-    if [ -f .env ]; then set -a; source .env; set +a; fi
     
     echo "🔐 Generating Google Drive OAuth token..."
     echo ""

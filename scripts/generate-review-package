@@ -83,6 +83,7 @@ def generate_review_package(user_data, period, project, location):
     llm = get_vertex_ai_llm(project, location, temperature=0.3)
 
     # Build context
+    # Prioritize notes (human-written feedback) over automated analyses
     context_parts = [f"# Review Package for {user_data['user']}\n"]
     context_parts.append(f"**Review Period**: {period}\n")
 
@@ -94,30 +95,32 @@ def generate_review_package(user_data, period, project, location):
         context_parts.append(ladder_criteria)
         context_parts.append("\n")
 
-    # Add analyses
+    # Add notes FIRST and with MORE WEIGHT (human-written feedback is most important)
+    if user_data["notes_analysis"]:
+        context_parts.append("## Notes Analysis (HIGH PRIORITY - Human-written feedback)\n\n")
+        context_parts.append(user_data["notes_analysis"][:10000])
+        context_parts.append("\n\n---\n\n")
+
+    # Add 1:1 notes (also high priority)
+    if user_data["lattice_notes"]:
+        context_parts.append("## 1:1 Meeting Notes (HIGH PRIORITY - Direct conversations)\n\n")
+        context_parts.append(user_data["lattice_notes"][:5000])
+        context_parts.append("\n\n---\n\n")
+
+    # Add analyses LAST (supporting context, but notes take precedence)
     if user_data["analyses"]:
-        context_parts.append("## Analysis Reports\n\n")
+        context_parts.append("## Analysis Reports (Supporting Context)\n\n")
         for label, content in user_data["analyses"].items():
             context_parts.append(f"### {label} Analysis\n\n")
             context_parts.append(content[:8000])  # Limit length
             context_parts.append("\n\n---\n\n")
 
-    # Add notes analysis
-    if user_data["notes_analysis"]:
-        context_parts.append("## Notes Analysis\n\n")
-        context_parts.append(user_data["notes_analysis"][:10000])
-        context_parts.append("\n\n---\n\n")
-
-    # Add 1:1 notes
-    if user_data["lattice_notes"]:
-        context_parts.append("## 1:1 Meeting Notes\n\n")
-        context_parts.append(user_data["lattice_notes"][:5000])
-        context_parts.append("\n\n---\n\n")
-
     context = "\n".join(context_parts)
 
     # Build prompt
     prompt = f"""You are writing an objective performance review for {user_data["user"]} for the period {period}. The primary audience is the individual being reviewed, who will use this for constructive feedback and growth. The review will also be read by management, HR, and leadership.
+
+**IMPORTANT**: The notes (self-reviews, feedback, 1:1 meeting notes) contain human-written feedback and should be weighted MORE than the automated analysis reports. When notes and analyses present different perspectives, prioritize the notes. The notes represent direct human judgment and observations, while analyses are automated summaries.
 
 {context}
 
@@ -128,26 +131,31 @@ Write a comprehensive, objective performance review suitable for multiple audien
 **Critical Guidelines:**
 - **NEVER use second person** ("you", "your", "you've") or first person ("I", "we", "our team", "I've seen", "I noticed")
 - **ALWAYS use third person** throughout (e.g., "{user_data["user"]} demonstrated", "{user_data["user"]} has shown", "{user_data["user"]} would benefit from")
+- **NEVER mention levels, level numbers, or level-related language** - Avoid phrases like "current level", "next level", "L4", "L5", "L6", "beyond the expectations for the current level", "toward the next level", "exceeds expectations for this level", or any similar level-based comparisons
 - **Never mention** "analysis", "metrics", "data", "reports", "automated", "scripts", or any technical terms that would reveal this is AI-generated
+- **Avoid sourcing phrases** - Don't use phrases like "Peer feedback indicates", "Observations show", "It has been noted that", "Feedback suggests", "Reports indicate". Instead, state observations directly (e.g., "Ariel sometimes hesitates" not "Peer feedback indicates that Ariel sometimes hesitates")
 - Use objective, professional language appropriate for multiple audiences
 - **Balance empathy with honesty**: Write with understanding and compassion while being direct and truthful about performance
 - **Be realistic and honest**: The individual needs constructive feedback to grow - don't shy away from difficult feedback, but deliver it with empathy
 - Show empathy when discussing challenges or development areas - frame feedback constructively and acknowledge the human side of growth
 - Be honest about both strengths and areas for improvement - provide realistic assessments
+- **Reference specific projects, initiatives, and technical designs** - Always name concrete examples from the analysis reports (e.g., "SDDM V1 project", "Discriminator refactor", "Gemini migration design document"). Avoid abstract descriptions like "various projects" or "multiple initiatives". Be specific about what was accomplished. **Do NOT bold project names** - write them naturally without markdown formatting (e.g., "the SDDM V1 project" not "**SDDM V1 project**").
 - Reference specific examples and contributions naturally, based on the provided information
 - Maintain a balanced, fair tone that recognizes achievements while providing constructive feedback
 - Focus on observable behaviors, outcomes, and impact rather than personal opinions
 - Write as if documenting performance based on evidence and observations, but with genuine care for the individual's growth
 - **Do NOT include a personal greeting or introduction** - start directly with the content sections
 
-Base your review on:
-- Work contributions and impact (from the reports provided)
-- Self-reflections and feedback (from notes)
-- 1:1 conversations and discussions (from meeting notes)
-- Expectations from the organizational framework
-- Fair comparison with peers
+Base your review on (in order of priority):
+1. **Self-reflections and feedback (from notes)** - This is the HIGHEST PRIORITY source. The notes contain human-written feedback, self-reviews, and direct observations. Weight this information most heavily when writing the review.
+2. **1:1 conversations and discussions (from meeting notes)** - These represent direct, personal interactions and should be weighted heavily.
+3. **Work contributions and impact (from the analysis reports)** - Use these as supporting context, but notes take precedence when there are differences in emphasis or perspective.
+4. **Expectations from the organizational framework** - Use for context on what good performance looks like.
+5. **Fair comparison with peers** - Use for calibration context.
 
-**CRITICAL**: Write EXCLUSIVELY in third person. NEVER use "you", "your", "I", "we", or "our team". The individual is the primary consumer and needs honest, constructive feedback. Be realistic and direct while maintaining empathy.
+**CRITICAL**: When notes and analyses present different perspectives or emphasis, prioritize the notes. The notes represent human judgment and direct feedback, while analyses are automated summaries. The review should reflect the human perspective from notes more than the automated analysis perspective.
+
+**CRITICAL**: Write EXCLUSIVELY in third person. NEVER use "you", "your", "I", "we", or "our team". NEVER mention levels, level numbers, or level-related language (e.g., "current level", "next level", "L4/L5/L6", "beyond expectations for this level"). The individual is the primary consumer and needs honest, constructive feedback. Be realistic and direct while maintaining empathy.
 
 Format your response as a well-structured markdown document with proper headings and formatting. Write in an objective, professional tone throughout. Do NOT include any personal greeting, salutation, or introduction - start directly with the content sections.
 
@@ -157,19 +165,38 @@ The review should follow this structure:
 
 What are 1-2 key achievements of this individual during the review period, and how have these contributions positively impacted the business, team, or their professional development?
 
-Write this section EXCLUSIVELY in third person, describing observable achievements and their impact. Use phrases like "{user_data["user"]} demonstrated", "{user_data["user"]} successfully", "{user_data["user"]} showed", "{user_data["user"]} has made significant contributions". Be specific about the impact and outcomes. NEVER use "you" or "your".
+Write this section EXCLUSIVELY in third person. **Start with a summary paragraph** describing the overall achievements and their impact. Then provide **2-3 bullet points** in the format: `* **Concept Title**: Action/description`. Each bullet should highlight a concrete accomplishment with a bolded concept title followed by a colon and the specific action or impact. Use phrases like "{user_data["user"]} demonstrated", "{user_data["user"]} successfully", "{user_data["user"]} showed", "{user_data["user"]} has made significant contributions". **CRITICAL: Reference specific projects, initiatives, and technical designs by name** (e.g., "the SDDM V1 project", "the Discriminator refactor", "the Gemini migration design document"). Avoid abstract descriptions - be concrete and specific about what was accomplished. **Do NOT bold project names in the paragraph** - write them naturally without markdown formatting. Be specific about the impact and outcomes. NEVER use "you" or "your".
+
+Example format:
+[Summary paragraph describing overall achievements]
+
+* **Project Leadership**: [Specific action and impact with project name]
+* **Technical Architecture**: [Specific action and impact with project name]
+* **Team Enablement**: [Specific action and impact]
 
 ## Challenges and Development Areas
 
 What are 1-2 specific challenges or blockers this person faced over the previous period? What improvements or suggestions would enhance their continued development and effectiveness?
 
-Write this EXCLUSIVELY in third person with a constructive, empathetic, and honest tone. Frame challenges as growth opportunities with understanding. Use phrases like "{user_data["user"]} encountered", "{user_data["user"]} would benefit from", "{user_data["user"]} has room to grow in", "Areas for continued development include". Be honest and realistic about areas needing improvement while showing empathy and framing feedback constructively. Acknowledge that growth is a journey and challenges are normal. NEVER use "you" or "your".
+Write this EXCLUSIVELY in third person with a constructive, empathetic, and honest tone. **Start with a summary paragraph** framing the overall challenges and development areas. Then provide **2-3 bullet points** in the format: `* **Concept Title**: Action/description`. Each bullet should be a specific, addressable observation with a bolded concept title followed by a colon and the specific challenge or development area. Frame challenges as growth opportunities with understanding. Use phrases like "{user_data["user"]} encountered", "{user_data["user"]} would benefit from", "{user_data["user"]} has room to grow in". State observations directly - avoid sourcing phrases like "Peer feedback indicates", "Observations show", or "It has been noted that". Just state things directly (e.g., "{user_data["user"]} sometimes hesitates" not "Peer feedback indicates that {user_data["user"]} sometimes hesitates"). Be honest and realistic about areas needing improvement while showing empathy and framing feedback constructively. Acknowledge that growth is a journey and challenges are normal. NEVER use "you" or "your".
+
+Example format:
+[Summary paragraph framing overall challenges and development areas]
+
+* **Vocal Leadership**: [Specific challenge or development area]
+* **Strategic Influence**: [Specific challenge or development area]
 
 ## Development Focus
 
 What key skills should this individual focus on developing in the coming period to enhance their performance and career growth? How will these skills benefit their role, team, and organization?
 
-Write this EXCLUSIVELY in third person, framing development areas objectively. Use phrases like "{user_data["user"]} should focus on", "{user_data["user"]} would benefit from developing", "{user_data["user"]} needs to strengthen", "Key areas for growth include". Connect skills to their growth trajectory and expectations. Be realistic and specific. NEVER use "you" or "your".
+Write this EXCLUSIVELY in third person, framing development areas objectively. **Start with a summary paragraph** describing the overall development focus and its benefits. Then provide **2-3 bullet points** in the format: `* **Concept Title**: Action/description`. Each bullet should be a specific, actionable development area with a bolded concept title followed by a colon and the specific action or skill to develop. Use phrases like "{user_data["user"]} should focus on", "{user_data["user"]} would benefit from developing", "{user_data["user"]} needs to strengthen", "Key areas for growth include". Connect skills to their growth trajectory and expectations. Be realistic and specific. NEVER use "you" or "your". NEVER mention levels, level numbers, or phrases like "next level", "current level", or similar level-based language.
+
+Example format:
+[Summary paragraph describing overall development focus]
+
+* **Technical Leadership**: [Specific action or skill to develop]
+* **Cross-functional Influence**: [Specific action or skill to develop]
 
 ## Performance Ratings
 
@@ -179,7 +206,7 @@ How would you rate this person on Technical Skills over the last 6 months?
 
 **Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-Write a brief, objective justification EXCLUSIVELY in third person. Reference specific examples and observable behaviors. Avoid technical jargon or metrics. NEVER use "you" or "your".
+Write a brief, objective justification EXCLUSIVELY in third person. **Reference specific projects, initiatives, and technical designs by name** (e.g., "work on the SDDM V1 project", "the Discriminator refactor", "design document for Gemini migration"). **Do NOT bold project names** - write them naturally without markdown formatting. Reference specific examples and observable behaviors. Avoid technical jargon or metrics. NEVER use "you" or "your". NEVER mention levels, level numbers, or phrases like "beyond expectations for this level", "current level", or similar level-based comparisons.
 
 ### Delivery
 
@@ -195,7 +222,7 @@ How would you rate this person on Feedback, Communication, and Collaboration ove
 
 **Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-Write a brief, objective justification in third person. Reference observable interactions and collaboration patterns.
+Write a brief, objective justification in third person. Reference observable interactions and collaboration patterns. State observations directly - avoid sourcing phrases like "Peer feedback indicates" or "Observations show".
 
 ### Leadership
 
@@ -203,7 +230,7 @@ How would you rate this person on Leadership over the last 6 months?
 
 **Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-Write a brief, objective justification in third person. Focus on observable leadership behaviors and impact.
+Write a brief, objective justification in third person. Focus on observable leadership behaviors and impact. State observations directly - avoid sourcing phrases like "Peer feedback indicates" or "Observations show".
 
 ## Overall Performance
 
@@ -211,18 +238,18 @@ Please rate the overall performance of this individual over the past 6 months
 
 **Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-Write a comprehensive, objective summary EXCLUSIVELY in third person that balances empathy with honesty. This should be a balanced assessment suitable for multiple audiences, with the individual as the primary consumer. Acknowledge contributions objectively while showing genuine appreciation. Be honest and realistic about performance while demonstrating understanding and support for continued growth. Frame the assessment with care and respect for the individual's journey. NEVER use "you", "your", "I", "we", or "our team".
+Write a comprehensive, objective summary EXCLUSIVELY in third person that balances empathy with honesty. This should be a balanced assessment suitable for multiple audiences, with the individual as the primary consumer. **Reference specific projects, initiatives, and technical designs by name** throughout (e.g., "SDDM V1 project", "Discriminator refactor", "Gemini migration design"). **Do NOT bold project names** - write them naturally without markdown formatting. Avoid abstract descriptions - be concrete about accomplishments. Acknowledge contributions objectively while showing genuine appreciation. Be honest and realistic about performance while demonstrating understanding and support for continued growth. Frame the assessment with care and respect for the individual's journey. NEVER use "you", "your", "I", "we", or "our team". NEVER mention levels, level numbers, or phrases like "L4/L5/L6", "next level", "current level", "beyond expectations for this level", or similar level-based language.
 
 ## Additional Thoughts
 
 If you would like, please share any additional thoughts.
 
-Add any additional context, observations, or guidance that would be helpful for understanding this individual's performance and development trajectory. Write EXCLUSIVELY in third person with an objective, professional tone. NEVER use "you", "your", "I", "we", or "our team".
+Add any additional context, observations, or guidance that would be helpful for understanding this individual's performance and development trajectory. **Start with a summary paragraph** if providing context, then use **bulleted list** format: `* **Concept Title**: Action/description` if providing multiple points. **Reference specific projects, initiatives, and technical designs by name** when relevant. **Do NOT bold project names in paragraphs** - write them naturally without markdown formatting. Write EXCLUSIVELY in third person with an objective, professional tone. NEVER use "you", "your", "I", "we", or "our team". NEVER mention levels, level numbers, or phrases like "next level", "current level", "prepare for the next level", or similar level-based language.
 """
 
     messages = [
         SystemMessage(
-            content="You are writing an objective performance review suitable for multiple audiences, with the individual being reviewed as the primary consumer. You write EXCLUSIVELY in third person throughout (e.g., 'Ariel has shown', 'Ariel demonstrated', 'Ariel would benefit from'). NEVER use second person ('you', 'your') or first person ('I', 'we', 'our team'). Use professional, objective language that balances empathy with honesty - showing understanding and care while being direct and truthful about performance. You never mention automation, metrics, analyses, or technical data sources. Your reviews are balanced, evidence-based, and focus on observable behaviors and outcomes. Write in a constructive, empathetic, and honest tone appropriate for formal performance documentation. Be realistic and honest in your assessment - the individual needs constructive feedback to grow."
+            content="You are writing an objective performance review suitable for multiple audiences, with the individual being reviewed as the primary consumer. You write EXCLUSIVELY in third person throughout (e.g., 'Ariel has shown', 'Ariel demonstrated', 'Ariel would benefit from'). NEVER use second person ('you', 'your') or first person ('I', 'we', 'our team'). NEVER mention levels, level numbers, or level-related language - avoid phrases like 'current level', 'next level', 'L4/L5/L6', 'beyond expectations for this level', 'toward the next level', 'exceeds expectations for this level', or any similar level-based comparisons. CRITICALLY: Always reference specific projects, initiatives, and technical designs by name (e.g., 'SDDM V1 project', 'Discriminator refactor', 'Gemini migration design document'). Avoid abstract descriptions - be concrete and specific about accomplishments. Do NOT bold project names - write them naturally without markdown formatting (e.g., 'the SDDM V1 project' not '**SDDM V1 project**'). State observations directly - avoid robotic sourcing phrases like 'Peer feedback indicates', 'Observations show', 'It has been noted that', 'Feedback suggests'. Instead, state things directly (e.g., 'Ariel sometimes hesitates' not 'Peer feedback indicates that Ariel sometimes hesitates'). Use professional, objective language that balances empathy with honesty - showing understanding and care while being direct and truthful about performance. You never mention automation, metrics, analyses, or technical data sources. Your reviews are balanced, evidence-based, and focus on observable behaviors and outcomes. Write in a constructive, empathetic, and honest tone appropriate for formal performance documentation. Be realistic and honest in your assessment - the individual needs constructive feedback to grow."
         ),
         HumanMessage(content=prompt),
     ]
