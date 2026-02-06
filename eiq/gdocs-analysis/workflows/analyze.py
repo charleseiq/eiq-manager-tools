@@ -38,6 +38,7 @@ from markitdown import MarkItDown  # noqa: E402
 
 # Import ladder utilities for level-based evaluation
 try:
+    from eiq.shared.ai_utils import get_vertex_ai_llm
     from eiq.shared.ladder_utils import format_level_criteria_for_prompt
 except ImportError:
     # Fallback if ladder utils not available
@@ -62,16 +63,9 @@ except ImportError:
     BarColumn = None  # type: ignore[assignment]
     TimeElapsedColumn = None  # type: ignore[assignment]
 
-# Use new langchain-google-genai package (supports Vertex AI)
-# Set Vertex AI mode before importing
+# Vertex AI is now handled via shared ai_utils.get_vertex_ai_llm()
+# Set Vertex AI mode before importing shared utilities
 os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
-try:
-    from langchain_google_genai import ChatGoogleGenerativeAI
-except ImportError:
-    # Fallback to deprecated package if new one not available
-    from langchain_google_vertexai import (  # type: ignore[import-untyped]
-        ChatVertexAI as ChatGoogleGenerativeAI,
-    )
 
 # Google Drive API imports
 try:
@@ -117,9 +111,7 @@ class AnalysisState(TypedDict):
     output_dir: str | None
     period: str | None  # Period key for centralized config lookup
 
-    # Google Drive API
-    drive_folder_ids: list[str]  # Optional, deprecated - if empty, searches all Drive
-    document_types: list[str]  # Optional, deprecated - only used with drive_folder_ids
+    # Google Drive API (no fields needed - searches all Drive automatically)
 
     # Vertex AI
     vertexai_project: str
@@ -366,71 +358,6 @@ def _list_all_documents(
     return documents
 
 
-def _list_documents_in_folder_legacy(
-    service: Any, folder_id: str, start_date: str, end_date: str, document_types: list[str]
-) -> list[dict]:
-    """Legacy function: List Google Docs in a folder within date range (deprecated)."""
-    documents = []
-
-    start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC)
-    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=UTC)
-    end_dt = end_dt.replace(hour=23, minute=59, second=59)
-
-    try:
-        # Query for Google Docs in folder
-        query = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false"
-        results = (
-            service.files()
-            .list(
-                q=query,
-                fields="files(id, name, createdTime, modifiedTime, webViewLink, owners(emailAddress, displayName))",
-                orderBy="modifiedTime desc",
-            )
-            .execute()
-        )
-
-        items = results.get("files", [])
-
-        for item in items:
-            # Check if created time is within date range
-            created_time = datetime.fromisoformat(item["createdTime"].replace("Z", "+00:00"))
-
-            # Include only if created in date range (not just modified)
-            if not (start_dt <= created_time <= end_dt):
-                continue
-
-            # Check if document name matches any document type pattern (if specified)
-            if document_types:
-                name_lower = item["name"].lower()
-                matches_type = any(doc_type.lower() in name_lower for doc_type in document_types)
-                if not matches_type:
-                    continue
-
-            # Store both email and display name for owner filtering
-            owners_data = item.get("owners", [])
-            documents.append(
-                {
-                    "id": item["id"],
-                    "name": item["name"],
-                    "created_time": item["createdTime"],
-                    "modified_time": item["modifiedTime"],
-                    "url": item["webViewLink"],
-                    "owners": [owner.get("displayName", "") for owner in owners_data],
-                    "owner_emails": [
-                        owner.get("emailAddress", "")
-                        for owner in owners_data
-                        if owner.get("emailAddress")
-                    ],
-                }
-            )
-
-    except HttpError as error:
-        print(f"An error occurred listing folder {folder_id}: {error}")
-        return []
-
-    return documents
-
-
 def load_config(state: AnalysisState) -> AnalysisState:
     """Load user configuration from config.json or centralized config.json."""
     config_path = Path(state["config_path"])
@@ -461,14 +388,8 @@ def load_config(state: AnalysisState) -> AnalysisState:
             state["error"] = f"User '{username}' not found in centralized config"
             return state
 
-        # Use user config directly, but merge with top-level config for shared settings
+        # Use user config directly
         config = user_config.copy()
-
-        # Merge top-level config settings (drive_folder_ids, document_types) if present (optional, deprecated)
-        if "drive_folder_ids" in centralized_config:
-            config["drive_folder_ids"] = centralized_config["drive_folder_ids"]
-        if "document_types" in centralized_config:
-            config["document_types"] = centralized_config["document_types"]
 
         # Resolve period reference from state (passed from CLI)
         if "period" in state and state["period"]:
@@ -497,10 +418,6 @@ def load_config(state: AnalysisState) -> AnalysisState:
     state["end_date"] = config.get("end_date", state.get("end_date", "2025-12-31"))
     state["analysis_period"] = _format_analysis_period(state["start_date"], state["end_date"])
     state["level"] = config.get("level")  # Store level for evaluation criteria
-    # drive_folder_ids and document_types are now optional (deprecated)
-    # If not provided, all Google Docs in the user's Drive will be searched
-    state["drive_folder_ids"] = config.get("drive_folder_ids", [])
-    state["document_types"] = config.get("document_types", [])
 
     return state
 
@@ -510,8 +427,6 @@ def fetch_gdocs_data(state: AnalysisState) -> AnalysisState:
     if state.get("error"):
         return state
 
-    drive_folder_ids = state.get("drive_folder_ids", [])
-    document_types = state.get("document_types", [])
     start_date = state["start_date"]
     end_date = state["end_date"]
     output_dir_str = state.get("output_dir") or "reports"
@@ -532,58 +447,18 @@ def fetch_gdocs_data(state: AnalysisState) -> AnalysisState:
         state["error"] = f"Failed to authenticate with Google Drive: {str(e)}"
         return state
 
-    # If drive_folder_ids are specified, use legacy folder-based search (deprecated)
-    # Otherwise, search all Google Docs in user's Drive
-    if drive_folder_ids:
-        if RICH_AVAILABLE:
-            console.print("  [yellow]⚠️  Using legacy folder-based search (deprecated)[/yellow]")
-        else:
-            print("  ⚠️  Using legacy folder-based search (deprecated)")
-
-        # Legacy: Collect all documents from specified folders
-        all_documents = []
-        for folder_id in drive_folder_ids:
-            if RICH_AVAILABLE:
-                console.print(f"  [dim]Scanning folder {folder_id}...[/dim]")
-            else:
-                print(f"  Scanning folder {folder_id}...")
-
-            # Use the old function for backward compatibility
-            docs = _list_documents_in_folder_legacy(
-                service, folder_id, start_date, end_date, document_types
-            )
-            # Filter by owner in legacy mode too
-            if expected_email:
-                expected_email_lower = expected_email.lower()
-                docs = [
-                    doc
-                    for doc in docs
-                    if any(
-                        expected_email_lower == email.lower()
-                        for email in doc.get("owner_emails", [])
-                    )
-                ]
-            all_documents.extend(docs)
-
-            if RICH_AVAILABLE:
-                console.print(f"  [green]Found {len(docs)} documents[/green]")
-            else:
-                print(f"  Found {len(docs)} documents")
+    # Search all Google Docs in user's Drive (owned by the user)
+    if RICH_AVAILABLE:
+        console.print("  [dim]Searching Google Docs owned by you...[/dim]")
     else:
-        # New: Search all Google Docs in user's Drive (owned by the user)
-        if RICH_AVAILABLE:
-            console.print("  [dim]Searching Google Docs owned by you...[/dim]")
-        else:
-            print("  Searching Google Docs owned by you...")
+        print("  Searching Google Docs owned by you...")
 
-        all_documents = _list_all_documents(
-            service, start_date, end_date, user_email=expected_email
-        )
+    all_documents = _list_all_documents(service, start_date, end_date, user_email=expected_email)
 
-        if RICH_AVAILABLE:
-            console.print(f"  [green]Found {len(all_documents)} documents[/green]")
-        else:
-            print(f"  Found {len(all_documents)} documents")
+    if RICH_AVAILABLE:
+        console.print(f"  [green]Found {len(all_documents)} documents[/green]")
+    else:
+        print(f"  Found {len(all_documents)} documents")
 
     if not all_documents:
         state["error"] = f"No Google Docs found for the date range ({start_date} to {end_date})"
@@ -743,16 +618,8 @@ def analyze_with_vertexai(state: AnalysisState) -> AnalysisState:
     else:
         print("🤖 Analyzing with Vertex AI...")
 
-    # Set quota project to prevent warnings
-    os.environ["GOOGLE_CLOUD_QUOTA_PROJECT"] = project
-
-    # Initialize Vertex AI
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-pro",
-        project=project,
-        location=location,
-        temperature=0.3,
-    )
+    # Initialize Vertex AI LLM using shared utility (ensures gemini-2.5-pro)
+    llm = get_vertex_ai_llm(project, location, temperature=0.3)
 
     # Load report template
     with open(TEMPLATE_PATH) as f:
@@ -995,8 +862,6 @@ def run(
         "analysis_period": "",
         "output_dir": output_dir,
         "period": period,
-        "drive_folder_ids": [],
-        "document_types": [],
         "vertexai_project": vertexai_project or os.getenv("GOOGLE_CLOUD_PROJECT", ""),
         "vertexai_location": vertexai_location or os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4"),
         "documents": [],

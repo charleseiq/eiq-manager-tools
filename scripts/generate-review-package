@@ -9,7 +9,6 @@ This script combines:
 - Generates review-package.md with structured questions
 """
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -19,32 +18,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from eiq.shared.ai_utils import get_vertex_ai_llm, load_ladder_criteria
 from eiq.shared.cli_utils import slugify
-
-# Use new langchain-google-genai package (supports Vertex AI)
-# Set Vertex AI mode before importing
-os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
-try:
-    from langchain_google_genai import ChatGoogleGenerativeAI
-except ImportError:
-    # Fallback to deprecated package if new one not available
-    try:
-        from langchain_google_vertexai import (  # type: ignore[import-untyped]
-            ChatVertexAI as ChatGoogleGenerativeAI,
-        )
-    except ImportError:
-        print("❌ langchain_google_genai or langchain_google_vertexai not available")
-        print("   Install with: uv sync")
-        sys.exit(1)
-
-# Try to import rich
-try:
-    from rich.console import Console
-
-    RICH_AVAILABLE = True
-except ImportError:
-    RICH_AVAILABLE = False
-    Console = None  # type: ignore[assignment]
+from eiq.shared.config_loader import get_all_users, load_config
+from eiq.shared.rich_utils import get_console
 
 
 def load_user_data(user, period):
@@ -59,36 +36,33 @@ def load_user_data(user, period):
         "user": user.get("name"),
         "level": user.get("level"),
         "analyses": {},
-        "self_reviews": [],
+        "notes_analysis": None,
         "lattice_notes": None,
     }
 
-    # Load analysis reports (prefer calibrated versions)
+    # Load analysis reports (calibration updates files in place)
     analysis_files = [
-        ("jira-analysis.md", "jira-analysis-calibrated.md", "JIRA"),
-        ("github-review-analysis.md", "github-review-analysis-calibrated.md", "GitHub"),
-        ("gdocs-analysis.md", "gdocs-analysis-calibrated.md", "Google Docs"),
+        ("jira-analysis.md", "JIRA"),
+        ("github-review-analysis.md", "GitHub"),
+        ("gdocs-analysis.md", "Google Docs"),
     ]
 
-    for original, calibrated, label in analysis_files:
-        # Try calibrated first, fallback to original
-        file_path = period_dir / calibrated
-        if not file_path.exists():
-            file_path = period_dir / original
+    for filename, label in analysis_files:
+        file_path = period_dir / filename
 
         if file_path.exists():
             with open(file_path, encoding="utf-8") as f:
                 data["analyses"][label] = f.read()
 
-    # Load self-reviews from notes folder
+    # Load notes analysis if available
+    notes_analysis_file = period_dir / "notes-analysis.md"
+    if notes_analysis_file.exists():
+        with open(notes_analysis_file, encoding="utf-8") as f:
+            data["notes_analysis"] = f.read()
+
+    # Load lattice notes if available
     notes_dir = period_dir / "notes"
     if notes_dir.exists():
-        for note_file in notes_dir.glob("*.md"):
-            if note_file.name not in ["lattice.md", "README.md"]:
-                with open(note_file, encoding="utf-8") as f:
-                    data["self_reviews"].append({"filename": note_file.name, "content": f.read()})
-
-        # Load lattice notes if available
         lattice_file = notes_dir / "lattice.md"
         if lattice_file.exists():
             with open(lattice_file, encoding="utf-8") as f:
@@ -97,44 +71,24 @@ def load_user_data(user, period):
     return data
 
 
-def load_ladder_criteria(level):
-    """Load ladder criteria for a level."""
-    try:
-        from eiq.shared.ladder_utils import format_level_criteria_for_prompt
-
-        ladder_file = Path("ladder/Matrix.html")
-        if ladder_file.exists():
-            return format_level_criteria_for_prompt(level, ladder_file, include_next_level=True)
-    except (ImportError, Exception):
-        pass
-    return ""
-
-
 def generate_review_package(user_data, period, project, location):
     """Generate review package using AI."""
-    if RICH_AVAILABLE:
-        console = Console()
+    console = get_console()
+    if console:
         console.print(f"📝 [cyan]Generating review package for {user_data['user']}...[/cyan]")
     else:
         print(f"📝 Generating review package for {user_data['user']}...")
 
-    # Set quota project
-    os.environ["GOOGLE_CLOUD_QUOTA_PROJECT"] = project
-
     # Initialize Vertex AI
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-pro",
-        project=project,
-        location=location,
-        temperature=0.3,
-    )
+    llm = get_vertex_ai_llm(project, location, temperature=0.3)
 
     # Build context
     context_parts = [f"# Review Package for {user_data['user']} (Level {user_data['level']})\n"]
     context_parts.append(f"**Review Period**: {period}\n")
 
     # Add ladder criteria
-    ladder_criteria = load_ladder_criteria(user_data["level"])
+    level = user_data.get("level", "")
+    ladder_criteria = load_ladder_criteria(level, include_next_level=True) if level else ""
     if ladder_criteria:
         context_parts.append("## Level Expectations\n")
         context_parts.append(ladder_criteria)
@@ -148,13 +102,11 @@ def generate_review_package(user_data, period, project, location):
             context_parts.append(content[:8000])  # Limit length
             context_parts.append("\n\n---\n\n")
 
-    # Add self-reviews
-    if user_data["self_reviews"]:
-        context_parts.append("## Self-Reviews\n\n")
-        for review in user_data["self_reviews"]:
-            context_parts.append(f"### {review['filename']}\n\n")
-            context_parts.append(review["content"][:5000])
-            context_parts.append("\n\n---\n\n")
+    # Add notes analysis
+    if user_data["notes_analysis"]:
+        context_parts.append("## Notes Analysis\n\n")
+        context_parts.append(user_data["notes_analysis"][:10000])
+        context_parts.append("\n\n---\n\n")
 
     # Add 1:1 notes
     if user_data["lattice_notes"]:
@@ -165,87 +117,112 @@ def generate_review_package(user_data, period, project, location):
     context = "\n".join(context_parts)
 
     # Build prompt
-    prompt = f"""Based on the following information, generate a comprehensive review package for {user_data["user"]} (Level {user_data["level"]}) for the period {period}.
+    prompt = f"""You are writing an objective performance review for {user_data["user"]} (Level {user_data["level"]}) for the period {period}. The primary audience is the individual being reviewed, who will use this for constructive feedback and growth. The review will also be read by management, HR, and leadership.
 
 {context}
 
-## Review Questions
+## Your Task
 
-Please provide thoughtful, specific answers to each question below. Base your answers on:
-- The analysis reports provided
-- The engineer's self-reviews and reflections
-- 1:1 meeting notes and discussions
+Write a comprehensive, objective performance review suitable for multiple audiences, with the individual as the primary consumer. This should sound professional, fair, empathetic, and honest - not like it came from an automated system.
+
+**Critical Guidelines:**
+- **NEVER use second person** ("you", "your", "you've") or first person ("I", "we", "our team", "I've seen", "I noticed")
+- **ALWAYS use third person** throughout (e.g., "{user_data["user"]} demonstrated", "{user_data["user"]} has shown", "{user_data["user"]} would benefit from")
+- **Never mention** "analysis", "metrics", "data", "reports", "automated", "scripts", or any technical terms that would reveal this is AI-generated
+- Use objective, professional language appropriate for multiple audiences
+- **Balance empathy with honesty**: Write with understanding and compassion while being direct and truthful about performance
+- **Be realistic and honest**: The individual needs constructive feedback to grow - don't shy away from difficult feedback, but deliver it with empathy
+- Show empathy when discussing challenges or development areas - frame feedback constructively and acknowledge the human side of growth
+- Be honest about both strengths and areas for improvement - provide realistic assessments
+- Reference specific examples and contributions naturally, based on the provided information
+- Maintain a balanced, fair tone that recognizes achievements while providing constructive feedback
+- Focus on observable behaviors, outcomes, and impact rather than personal opinions
+- Write as if documenting performance based on evidence and observations, but with genuine care for the individual's growth
+- **Do NOT include a personal greeting or introduction** - start directly with the content sections
+
+Base your review on:
+- Work contributions and impact (from the reports provided)
+- Self-reflections and feedback (from notes)
+- 1:1 conversations and discussions (from meeting notes)
 - Level-appropriate expectations from the organizational ladder
-- Fair benchmarking against peers at the same level
+- Fair comparison with peers at the same level
 
----
+**CRITICAL**: Write EXCLUSIVELY in third person. NEVER use "you", "your", "I", "we", or "our team". The individual is the primary consumer and needs honest, constructive feedback. Be realistic and direct while maintaining empathy.
 
-**What are 1-2 key achievements of this individual during the review period, and how have these contributions positively impacted the business, team, or their professional development?** *
+Format your response as a well-structured markdown document with proper headings and formatting. Write in an objective, professional tone throughout. Do NOT include any personal greeting, salutation, or introduction - start directly with the content sections.
 
-**What are 1-2 specific challenges or blockers this person faced over the previous period. What improvements or suggestions do you have to enhance their continued development and effectiveness?** *
+The review should follow this structure:
 
-**What key skills should this individual focus on developing in the coming period to enhance their performance and career growth? How will these skills benefit their role, team, and organization?** *
+## Key Achievements
 
-**How would you rate this person on Technical Skills over the last 6 months?** *
+What are 1-2 key achievements of this individual during the review period, and how have these contributions positively impacted the business, team, or their professional development?
 
-**How would you rate this person on Delivery over the last 6 months?** *
+Write this section EXCLUSIVELY in third person, describing observable achievements and their impact. Use phrases like "{user_data["user"]} demonstrated", "{user_data["user"]} successfully", "{user_data["user"]} showed", "{user_data["user"]} has made significant contributions". Be specific about the impact and outcomes. NEVER use "you" or "your".
 
-**How would you rate this person on Feedback, Communication, and Collaboration over the last 6 months?** *
+## Challenges and Development Areas
 
-**How would you rate this person on Leadership over the last 6 months?** *
+What are 1-2 specific challenges or blockers this person faced over the previous period? What improvements or suggestions would enhance their continued development and effectiveness?
 
-**Please rate the overall performance of this individual over the past 6 months** *
+Write this EXCLUSIVELY in third person with a constructive, empathetic, and honest tone. Frame challenges as growth opportunities with understanding. Use phrases like "{user_data["user"]} encountered", "{user_data["user"]} would benefit from", "{user_data["user"]} has room to grow in", "Areas for continued development include". Be honest and realistic about areas needing improvement while showing empathy and framing feedback constructively. Acknowledge that growth is a journey and challenges are normal. NEVER use "you" or "your".
 
-**If you would like, please share any additional thoughts.**
+## Development Focus
 
----
+What key skills should this individual focus on developing in the coming period to enhance their performance and career growth? How will these skills benefit their role, team, and organization?
 
-Format your response as a well-structured markdown document. Use the exact question format above with clear sections. Address their responses in self-reviews and ensure evaluations align with their level expectations from the ladder.
+Write this EXCLUSIVELY in third person, framing development areas objectively. Use phrases like "{user_data["user"]} should focus on", "{user_data["user"]} would benefit from developing", "{user_data["user"]} needs to strengthen", "Key areas for growth include". Connect skills to their growth trajectory and level expectations. Be realistic and specific. NEVER use "you" or "your".
 
-The review package should follow this exact structure:
+## Performance Ratings
 
----
-What are 1-2 key achievements of this individual during the review period, and how have these contributions positively impacted the business, team, or their professional development. *
+### Technical Skills
 
-[Your answer here]
+How would you rate this person on Technical Skills over the last 6 months?
 
-What are 1-2 specific challenges or blockers this person faced over the previous period. What improvements or suggestions do you have to enhance their continued development and effectiveness? *
+**Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-[Your answer here]
+Write a brief, objective justification EXCLUSIVELY in third person. Reference specific examples and observable behaviors. Avoid technical jargon or metrics. NEVER use "you" or "your".
 
-What key skills should this individual focus on developing in the coming period to enhance their performance and career growth? How will these skills benefit their role, team, and organization? *
+### Delivery
 
-[Your answer here]
+How would you rate this person on Delivery over the last 6 months?
 
-How would you rate this person on Technical Skills over the last 6 months? *
+**Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-[Your answer here]
+Write a brief, objective justification in third person. Focus on outcomes and impact based on observable results.
 
-How would you rate this person on Delivery over the last 6 months? *
+### Feedback, Communication, and Collaboration
 
-[Your answer here]
+How would you rate this person on Feedback, Communication, and Collaboration over the last 6 months?
 
-How would you rate this person on Feedback, Communication, and Collaboration over the last 6 months? *
+**Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-[Your answer here]
+Write a brief, objective justification in third person. Reference observable interactions and collaboration patterns.
 
-How would you rate this person on Leadership over the last 6 months? *
+### Leadership
 
-[Your answer here]
+How would you rate this person on Leadership over the last 6 months?
 
-Please rate the overall performance of this individual over the past 6 months *
+**Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
 
-[Your answer here]
+Write a brief, objective justification in third person. Focus on observable leadership behaviors and impact.
+
+## Overall Performance
+
+Please rate the overall performance of this individual over the past 6 months
+
+**Rating:** [Meets Expectations / Exceeds Expectations / Partially Meets Expectations]
+
+Write a comprehensive, objective summary EXCLUSIVELY in third person that balances empathy with honesty. This should be a balanced assessment suitable for multiple audiences, with the individual as the primary consumer. Acknowledge contributions objectively while showing genuine appreciation. Be honest and realistic about performance level while demonstrating understanding and support for continued growth. Frame the assessment with care and respect for the individual's journey. NEVER use "you", "your", "I", "we", or "our team".
+
+## Additional Thoughts
 
 If you would like, please share any additional thoughts.
 
-[Your answer here]
----
+Add any additional context, observations, or guidance that would be helpful for understanding this individual's performance and development trajectory. Write EXCLUSIVELY in third person with an objective, professional tone. NEVER use "you", "your", "I", "we", or "our team".
 """
 
     messages = [
         SystemMessage(
-            content="You are an expert at writing comprehensive, fair, and constructive performance reviews. You evaluate engineers based on their level expectations and provide actionable feedback."
+            content="You are writing an objective performance review suitable for multiple audiences, with the individual being reviewed as the primary consumer. You write EXCLUSIVELY in third person throughout (e.g., 'Ariel has shown', 'Ariel demonstrated', 'Ariel would benefit from'). NEVER use second person ('you', 'your') or first person ('I', 'we', 'our team'). Use professional, objective language that balances empathy with honesty - showing understanding and care while being direct and truthful about performance. You never mention automation, metrics, analyses, or technical data sources. Your reviews are balanced, evidence-based, and focus on observable behaviors and outcomes. Write in a constructive, empathetic, and honest tone appropriate for formal performance documentation. Be realistic and honest in your assessment - the individual needs constructive feedback to grow."
         ),
         HumanMessage(content=prompt),
     ]
@@ -259,12 +236,57 @@ If you would like, please share any additional thoughts.
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python scripts/generate-review-package <period>")
-        print("Example: python scripts/generate-review-package 2025H2")
-        sys.exit(1)
+    import argparse
 
-    period = sys.argv[1]
+    parser = argparse.ArgumentParser(
+        description="Generate holistic review packages for users",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="Generate review packages for all users in config.json (requires -p/--period)",
+    )
+    parser.add_argument(
+        "-n",
+        "--name",
+        help="User name in slugified format (e.g., ariel-ledesma). Can also be provided as first positional argument.",
+    )
+    parser.add_argument(
+        "-p",
+        "--period",
+        help="Period string (e.g., 2025H2). Can also be provided as positional argument.",
+    )
+    # Positional arguments for backward compatibility
+    parser.add_argument(
+        "positional_name",
+        nargs="?",
+        help="User name (positional, same as -n/--name). Ignored if -n/--name is provided.",
+    )
+    parser.add_argument(
+        "positional_period",
+        nargs="?",
+        help="Period string (positional, same as -p/--period). Ignored if -p/--period is provided.",
+    )
+
+    args = parser.parse_args()
+
+    # Resolve period (prefer flag, fallback to positional)
+    period = args.period or args.positional_period
+    if not period:
+        parser.error("Period is required. Provide -p/--period or period as positional argument.")
+
+    # Handle --all option
+    if args.all:
+        if args.name or args.positional_name:
+            parser.error("Cannot provide -n/--name or positional name with --all")
+        user_name = None  # Explicitly set to None for all users
+    else:
+        # Resolve name (prefer flag, fallback to positional)
+        user_name = args.name or args.positional_name
+
     project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
     location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4")
 
@@ -273,30 +295,57 @@ def main():
         sys.exit(1)
 
     # Load config
-    with open("config.json") as f:
-        config = json.load(f)
-
-    users = config.get("users", [])
-    if not users:
-        print("❌ No users found in config.json")
+    try:
+        config = load_config()
+    except FileNotFoundError:
+        print("❌ config.json not found")
         sys.exit(1)
 
-    print(f"📦 Generating review packages for {len(users)} users")
+    # Determine which users to process
+    if user_name:
+        # Single user
+        from eiq.shared.config_loader import find_user_by_slug
+
+        user = find_user_by_slug(config, user_name)
+        if not user:
+            print(f"❌ User '{user_name}' not found in config.json")
+            sys.exit(1)
+        users = [user]
+    elif args.all:
+        # All users (explicit --all flag)
+        users = get_all_users(config)
+        if not users:
+            print("❌ No users found in config.json")
+            sys.exit(1)
+    else:
+        # Default to all users if no name provided (backward compatibility)
+        users = get_all_users(config)
+        if not users:
+            print("❌ No users found in config.json")
+            sys.exit(1)
+
+    if user_name:
+        print(f"📦 Generating review package for {user_name}")
+    else:
+        print(f"📦 Generating review packages for {len(users)} users")
     print("=" * 60)
 
     for user in users:
         user_data = load_user_data(user, period)
         if not user_data:
-            print(f"⏭️  Skipping {user.get('name')} - no data found for {period}")
+            user_name = user.get("name", "Unknown") if isinstance(user, dict) else "Unknown"
+            print(f"⏭️  Skipping {user_name} - no data found for {period}")
             continue
 
         review_package = generate_review_package(user_data, period, project, location)
         if not review_package:
-            print(f"❌ Failed to generate review package for {user.get('name')}")
+            user_name = user.get("name", "Unknown") if isinstance(user, dict) else "Unknown"
+            print(f"❌ Failed to generate review package for {user_name}")
             continue
 
         # Save review package
-        user_slug = slugify(user.get("name", user.get("username", "")))
+        user_name = user.get("name", user.get("username", "")) if isinstance(user, dict) else ""
+        user_slug = slugify(user_name or "Unknown")
         package_path = Path(f"reports/{user_slug}/{period}/review-package.md")
         package_path.parent.mkdir(parents=True, exist_ok=True)
 

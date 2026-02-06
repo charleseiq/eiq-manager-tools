@@ -72,19 +72,8 @@ _check_gdocs_auth:
     fi
     @echo "✓ Authentication check passed"
 
-# Run PR review analysis - passes all arguments through to gh-analyze
-# 
-# Usage examples:
-#   just gh-analyze -n varun-sundar -p 2025H2            # RECOMMENDED: Slugified name, second half
-#   just gh-analyze -n ariel-ledesma -p 2025H1            # First half of 2025
-#   just gh-analyze -n erin-friesen -p 2026Q1             # First quarter of 2026
-#   just gh-analyze -n varun-sundar -p 2025               # Full year 2025
-#   just gh-analyze -n "Varun Sundar" -p 2025H2           # Alternative: Full name (quotes needed)
-#   just gh-analyze -u varunsundar -p 2025H2              # Use -u for GitHub usernames
-# 
-# IMPORTANT: 
-#   - Always use slugified names (e.g., varun-sundar) instead of full names.
-#   - Periods: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., 2025H2, 2026Q1, 2025)
+# Run GitHub PR review analysis
+# Usage: just gh-analyze -n <name> -p <period> | just gh-analyze -a -p <period>
 gh-analyze *args:
     #!/usr/bin/env bash
     set -e
@@ -95,20 +84,8 @@ gh-analyze *args:
     # Use uv run to ensure dependencies are available
     uv run ./scripts/gh-analyze {{args}}
 
-# Run JIRA sprint & epic analysis - passes all arguments through to jira-analyze
-# 
-# Usage examples:
-#   just jira-analyze -n varun-sundar -p 2025H2            # RECOMMENDED: Slugified name, second half
-#   just jira-analyze -n ariel-ledesma -p 2025H1           # First half of 2025
-#   just jira-analyze -n erin-friesen -p 2026Q1             # First quarter of 2026
-#   just jira-analyze -n varun-sundar -p 2025               # Full year 2025
-#   just jira-analyze -n "Varun Sundar" -p 2025H2           # Alternative: Full name (quotes needed)
-#   just jira-analyze -u varunsundar -p 2025H2              # Use -u for JIRA usernames/account IDs
-# 
-# IMPORTANT: 
-#   - Always use slugified names (e.g., varun-sundar) instead of full names.
-#   - Periods: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., 2025H2, 2026Q1, 2025)
-#   - Requires JIRA_TOKEN, EVOLUTIONIQ_EMAIL, and JIRA_URL environment variables
+# Run JIRA sprint & epic analysis
+# Usage: just jira-analyze -n <name> -p <period> | just jira-analyze -a -p <period>
 jira-analyze *args:
     #!/usr/bin/env bash
     set -e
@@ -119,18 +96,8 @@ jira-analyze *args:
     # Use uv run to ensure dependencies are available
     uv run ./scripts/jira-analyze {{args}}
 
-# Run Google Docs analysis - passes all arguments through to gdocs-analyze
-# 
-# Usage examples:
-#   just gdocs-analyze -n varun-sundar -p 2025H2            # RECOMMENDED: Slugified name, second half
-#   just gdocs-analyze -n ariel-ledesma -p 2025H1           # First half of 2025
-#   just gdocs-analyze -n erin-friesen -p 2026Q1             # First quarter of 2026
-#   just gdocs-analyze -n varun-sundar -p 2025               # Full year 2025
-# 
-# IMPORTANT: 
-#   - Always use slugified names (e.g., varun-sundar) instead of full names.
-#   - Periods: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., 2025H2, 2026Q1, 2025)
-#   - Requires Google Drive API setup (see eiq/gdocs-analysis/README.md)
+# Run Google Docs technical design analysis
+# Usage: just gdocs-analyze -n <name> -p <period> | just gdocs-analyze -a -p <period>
 gdocs-analyze *args:
     #!/usr/bin/env bash
     set -e
@@ -385,13 +352,16 @@ clean PERIOD:
     @echo "🧹 Cleaning analysis reports for period {{PERIOD}}..."
     @uv run python scripts/clean-reports {{PERIOD}}
 
-# Run all analyses for all users in parallel
+# Run all analyses for all users sequentially
 analyze-all PERIOD:
     @echo "🚀 Running all analyses for period {{PERIOD}}..."
     @uv run python scripts/analyze-all {{PERIOD}}
     @echo ""
     @echo "🔍 Calibrating reports for fairness..."
     @uv run python scripts/calibrate-reports {{PERIOD}}
+    @echo ""
+    @echo "📝 Analyzing notes files..."
+    @uv run python scripts/notes-analyze-all {{PERIOD}}
     @echo ""
     @echo "📦 Generating review packages..."
     @uv run python scripts/generate-review-package {{PERIOD}}
@@ -403,10 +373,19 @@ calibrate PERIOD:
     @echo "🔍 Calibrating reports for period {{PERIOD}}..."
     @uv run python scripts/calibrate-reports {{PERIOD}}
 
-# Generate review packages for a period
-review-package PERIOD:
-    @echo "📦 Generating review packages for period {{PERIOD}}..."
-    @uv run python scripts/generate-review-package {{PERIOD}}
+# Analyze notes files (self-reviews, feedback, etc.)
+# Usage: just notes-analyze -n <name> -p <period> | just notes-analyze -a -p <period>
+notes-analyze *args:
+    @uv run python scripts/notes-analyze {{args}}
+
+# Generate holistic review packages
+# Usage: just generate-review -n <name> -p <period> | just generate-review -a -p <period>
+generate-review *args:
+    @uv run python scripts/generate-review-package {{args}}
+
+# Alias for generate-review
+review-package *args:
+    @just generate-review {{args}}
 
 # Convert PDF files to markdown
 convert-pdfs:

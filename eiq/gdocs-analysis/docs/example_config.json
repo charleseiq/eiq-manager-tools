@@ -17,17 +17,3 @@
   ]
 }
 
-# Optional (deprecated): Limit search to specific folders and document types
-# Only use if you need to restrict the search scope
-{
-  "organization": "EvolutionIQ",
-  "drive_folder_ids": ["folder_id_1", "folder_id_2"],
-  "document_types": ["Technical Design Doc", "TDD", "Design Document"],
-  "users": [
-    {
-      "username": "user",
-      "email": "user@example.com",
-      "name": "User Name"
-    }
-  ]
-}

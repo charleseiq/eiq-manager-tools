@@ -10,6 +10,9 @@ scripts/gh-analyze -n varun-sundar -p 2025H2
 
 # Or using just
 just gh-analyze -n varun-sundar -p 2025H2
+
+# Run for all users in config.json
+just gh-analyze -a -p 2025H2
 ```
 
 ## Features
@@ -63,8 +66,11 @@ Add users to `config.json`:
 ### Basic Commands
 
 ```bash
-# Using slugified name (recommended - no quotes needed)
+# Using slugified name with flags (recommended - no quotes needed)
 scripts/gh-analyze -n varun-sundar -p 2025H2
+
+# Using positional arguments (backward compatible)
+scripts/gh-analyze varun-sundar 2025H2
 
 # Using full name (requires quotes)
 scripts/gh-analyze -n "Varun Sundar" -p 2025H2
@@ -74,13 +80,17 @@ scripts/gh-analyze -u varunsundar -p 2025H2
 
 # Custom date range
 scripts/gh-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
+
+# Run for all users in config.json
+scripts/gh-analyze -a -p 2025H2
 ```
 
 ### Options
 
-- `-n, --name NAME` - Person's name (slugified format recommended)
+- `-a, --all` - Run analysis for all users in config.json (requires -p/--period)
+- `-n, --name NAME` - Person's name (slugified format recommended). Can also be provided as first positional argument.
 - `-u, --username USERNAME` - GitHub username
-- `-p, --period PERIOD` - Period string (YYYYH1, YYYYH2, YYYYQ1-Q4, YYYY)
+- `-p, --period PERIOD` - Period string (YYYYH1, YYYYH2, YYYYQ1-Q4, YYYY). Can also be provided as second positional argument.
 - `-s, --start DATE` - Start date (YYYY-MM-DD)
 - `-e, --end DATE` - End date (YYYY-MM-DD)
 - `--org ORG` - Organization name (default: EvolutionIQ)

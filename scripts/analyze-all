@@ -7,7 +7,6 @@ Usage:
     e.g., python scripts/analyze-all 2025H2
 """
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from eiq.shared.cli_utils import slugify
+from eiq.shared.config_loader import get_all_users, load_config
 
 
 def run_analysis(user, analysis_type, period):
@@ -82,15 +82,13 @@ def main():
     period = sys.argv[1]
 
     # Load config
-    config_path = Path("config.json")
-    if not config_path.exists():
+    try:
+        config = load_config()
+    except FileNotFoundError:
         print("❌ config.json not found")
         sys.exit(1)
 
-    with open(config_path) as f:
-        config = json.load(f)
-
-    users = config.get("users", [])
+    users = get_all_users(config)
     if not users:
         print("❌ No users found in config.json")
         sys.exit(1)

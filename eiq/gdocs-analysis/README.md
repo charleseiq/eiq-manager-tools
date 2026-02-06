@@ -8,8 +8,14 @@ Analyzes technical design documents and other write-ups from Google Docs to eval
 # First-time setup: Authenticate (one-time)
 just auth
 
-# Run analysis
+# Run analysis (using flags - recommended)
 just gdocs-analyze -n varun-sundar -p 2025H2
+
+# Or using positional arguments
+just gdocs-analyze varun-sundar 2025H2
+
+# Run for all users in config.json
+just gdocs-analyze -a -p 2025H2
 
 # Or using the script directly
 scripts/gdocs-analyze -n varun-sundar -p 2025H2
@@ -21,6 +27,7 @@ scripts/gdocs-analyze -n varun-sundar -p 2025H2
 
 - **Document Discovery**: Automatically finds Google Docs owned by the user within a date range
 - **Owner Filtering**: Only analyzes documents where the user is the owner
+- **Date Filtering**: Only includes documents **created** during the specified period (not just modified)
 - **Markdown Conversion**: Converts documents to markdown for analysis
 - **Quality Evaluation**: Analyzes problem clarity, concept clarity, and execution path
 - **Comment Analysis**: Evaluates how authors responded to feedback
@@ -63,9 +70,9 @@ If you prefer manual setup or need to use a different authentication method:
 
 ### Configuration
 
-**Default behavior:** The tool searches **all Google Docs** in your Google Drive that were created or modified within the specified date range. No configuration needed!
+**Default behavior:** The tool searches **all Google Docs** in your Google Drive that were **created** within the specified date range. No configuration needed!
 
-**Optional (deprecated):** If you want to limit the search to specific folders or document types, you can add `drive_folder_ids` and `document_types` to centralized `config.json`:
+**Note:** The tool automatically searches all Google Docs owned by the user within the specified date range. No folder configuration needed!
 
 ```json
 {
@@ -77,16 +84,6 @@ If you prefer manual setup or need to use a different authentication method:
       "name": "Varun Sundar",
       "level": "L4"
     }
-  ],
-  "drive_folder_ids": [
-    "1a2b3c4d5e6f7g8h9i0j",
-    "9z8y7x6w5v4u3t2s1r0q"
-  ],
-  "document_types": [
-    "Technical Design Doc",
-    "TDD",
-    "Design Document",
-    "Architecture Review"
   ]
 }
 ```
@@ -94,13 +91,12 @@ If you prefer manual setup or need to use a different authentication method:
 **Important Notes:**
 - The `email` field is the same email used for JIRA (set via `EVOLUTIONIQ_EMAIL` environment variable)
 - During OAuth flow, authenticate with the same Google account as this email
-- **By default, all Google Docs owned by the user are searched** - no `drive_folder_ids` or `document_types` needed
+- **All Google Docs owned by the user are searched** - no folder configuration needed
 - Only documents where the user is an owner are included in the analysis
+- Only documents **created** during the specified period are included (not just modified)
 - The `level` field (e.g., "L4", "L5") is optional but recommended. When specified, analysis includes:
   - **Current level criteria**: Primary evaluation expectations for the engineer's current level
   - **Next level growth areas**: Criteria for the next level to identify promotion readiness and development opportunities
-- If `drive_folder_ids` is specified, only those folders will be searched (legacy behavior, deprecated)
-- If `document_types` is specified with `drive_folder_ids`, only documents matching those name patterns will be included (deprecated)
 
 ### Environment Variables
 
@@ -117,8 +113,11 @@ GOOGLE_CLOUD_LOCATION=us-east4
 ### Basic Commands
 
 ```bash
-# Using slugified name (recommended)
+# Using slugified name with flags (recommended)
 scripts/gdocs-analyze -n varun-sundar -p 2025H2
+
+# Using positional arguments (backward compatible)
+scripts/gdocs-analyze varun-sundar 2025H2
 
 # Using email/username
 scripts/gdocs-analyze -u varun.sundar@evolutioniq.com -p 2025H2
@@ -128,18 +127,24 @@ scripts/gdocs-analyze -n varun-sundar -s 2025-07-01 -e 2025-12-31
 
 # Custom output directory
 scripts/gdocs-analyze -n varun-sundar -p 2025H2 -o reports/custom/path
+
+# Run for all users in config.json
+scripts/gdocs-analyze -a -p 2025H2
 ```
 
 ### Options
 
-- `-n, --name NAME` - Person's name (slugified format recommended)
+- `-a, --all` - Run analysis for all users in config.json (requires -p/--period)
+- `-n, --name NAME` - Person's name (slugified format recommended). Can also be provided as first positional argument.
 - `-u, --username USERNAME` - Email or username
-- `-p, --period PERIOD` - Period string (YYYYH1, YYYYH2, YYYYQ1-Q4, YYYY)
+- `-p, --period PERIOD` - Period string (YYYYH1, YYYYH2, YYYYQ1-Q4, YYYY). Can also be provided as second positional argument.
 - `-s, --start DATE` - Start date (YYYY-MM-DD)
 - `-e, --end DATE` - End date (YYYY-MM-DD)
 - `-o, --output DIR` - Output directory
 - `--project PROJECT` - Google Cloud project (or set GOOGLE_CLOUD_PROJECT env var)
 - `--location LOCATION` - Vertex AI location (default: us-east4)
+
+**Note:** Flags take precedence over positional arguments. If both are provided, flags are used.
 
 ## Output
 
@@ -241,8 +246,6 @@ load_config → fetch_gdocs → analyze → generate → save → END
 - **Important**: Only documents where the user is an owner are included
 - Verify you are the owner of the documents (not just a viewer/editor)
 - Check that the email in `config.json` matches the Google account that owns the documents
-- If using `drive_folder_ids` (deprecated), verify folder IDs are correct in `config.json`
-- If using `document_types` (deprecated), check that document names match the patterns
 
 ### Conversion Errors
 

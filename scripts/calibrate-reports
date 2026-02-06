@@ -5,11 +5,11 @@ Calibrate analysis reports to ensure fair benchmarking across users and levels.
 This script:
 1. Reads all analysis.md files for a period
 2. Uses AI to evaluate fairness across users and levels
-3. Creates calibrated versions of each report
+3. Updates sections in place that need calibration
 """
 
-import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -18,32 +18,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from eiq.shared.ai_utils import get_vertex_ai_llm
 from eiq.shared.cli_utils import slugify
-
-# Use new langchain-google-genai package (supports Vertex AI)
-# Set Vertex AI mode before importing
-os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
-try:
-    from langchain_google_genai import ChatGoogleGenerativeAI
-except ImportError:
-    # Fallback to deprecated package if new one not available
-    try:
-        from langchain_google_vertexai import (  # type: ignore[import-untyped]
-            ChatVertexAI as ChatGoogleGenerativeAI,
-        )
-    except ImportError:
-        print("❌ langchain_google_genai or langchain_google_vertexai not available")
-        print("   Install with: uv sync")
-        sys.exit(1)
-
-# Try to import rich
-try:
-    from rich.console import Console
-
-    RICH_AVAILABLE = True
-except ImportError:
-    RICH_AVAILABLE = False
-    Console = None  # type: ignore[assignment]
+from eiq.shared.config_loader import get_all_users, load_config
+from eiq.shared.rich_utils import get_console
 
 
 def load_all_analyses(period):
@@ -52,11 +30,10 @@ def load_all_analyses(period):
     analyses = []
 
     # Load config to get user levels
-    with open("config.json") as f:
-        config = json.load(f)
+    config = load_config()
 
     user_levels = {}
-    for user in config.get("users", []):
+    for user in get_all_users(config):
         name_slug = slugify(user.get("name", user.get("username", "")))
         user_levels[name_slug] = {
             "name": user.get("name"),
@@ -110,29 +87,62 @@ def load_all_analyses(period):
     return analyses
 
 
+def find_section_in_content(content: str, section_title: str) -> tuple[int, int] | None:
+    """Find the start and end positions of a section in markdown content.
+
+    Returns (start_pos, end_pos) or None if not found.
+    """
+    lines = content.split("\n")
+
+    # Find section header
+    section_pattern = re.compile(rf"^#+\s+{re.escape(section_title)}\s*$", re.IGNORECASE)
+    start_line_idx = None
+
+    for i, line in enumerate(lines):
+        if section_pattern.match(line):
+            start_line_idx = i
+            break
+
+    if start_line_idx is None:
+        return None
+
+    # Find end of section (next section of same or higher level, or end of file)
+    header_level = len(lines[start_line_idx].split()[0])  # Count # characters
+    end_line_idx = len(lines)
+
+    for i in range(start_line_idx + 1, len(lines)):
+        line = lines[i]
+        header_match = re.match(r"^(#+)\s+(.+)$", line)
+        if header_match:
+            next_level = len(header_match.group(1))
+            if next_level <= header_level:
+                end_line_idx = i
+                break
+
+    # Convert line indices to character positions
+    # Calculate start_pos: sum of all characters before start_line_idx (including newlines)
+    start_pos = sum(len(lines[i]) + 1 for i in range(start_line_idx))  # +1 for newline
+    # Calculate end_pos: sum of all characters up to end_line_idx (including newlines)
+    end_pos = sum(len(lines[i]) + 1 for i in range(end_line_idx))  # +1 for newline
+
+    return (start_pos, end_pos)
+
+
 def calibrate_analyses(analyses, period, project, location):
     """Use AI to calibrate analyses for fairness."""
-    if RICH_AVAILABLE:
-        console = Console()
+    console = get_console()
+    if console:
         console.print("🔍 [cyan]Calibrating analyses for fairness...[/cyan]")
     else:
         print("🔍 Calibrating analyses for fairness...")
 
-    # Set quota project
-    os.environ["GOOGLE_CLOUD_QUOTA_PROJECT"] = project
-
     # Initialize Vertex AI
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-pro",
-        project=project,
-        location=location,
-        temperature=0.3,
-    )
+    llm = get_vertex_ai_llm(project, location, temperature=0.3)
 
     # Prepare calibration prompt
     calibration_prompt = """You are an expert at evaluating engineering performance reviews for fairness and consistency.
 
-Your task is to review the following analysis reports and ensure:
+Your task is to review the following analysis reports and identify which sections need calibration to ensure:
 1. **Fair benchmarking across levels**: Evaluations should be appropriate for each engineer's level (L4 vs L5 expectations)
 2. **Consistent standards**: Similar performance should receive similar ratings across engineers
 3. **Level-appropriate expectations**: L4 engineers should be evaluated against L4 criteria, L5 against L5 criteria
@@ -142,28 +152,28 @@ Your task is to review the following analysis reports and ensure:
 
 """
 
+    # Include full content but structure it by sections
     for analysis_group in analyses:
         calibration_prompt += (
             f"\n### {analysis_group['user']} (Level {analysis_group['level']})\n\n"
         )
         for analysis in analysis_group["analyses"]:
             calibration_prompt += f"#### {analysis['type']} Analysis\n\n"
-            calibration_prompt += analysis["content"][:5000]  # Limit content length
+            # Include full content for context
+            calibration_prompt += analysis["content"]
             calibration_prompt += "\n\n---\n\n"
 
     calibration_prompt += """
 ## Your Task:
 
-For each engineer, review their analyses and create a calibrated version that:
-1. Ensures evaluations are appropriate for their level
-2. Maintains consistency with other engineers at the same level
-3. Accounts for level-specific expectations from the organizational ladder
-4. Provides fair and constructive feedback
+For each engineer and each analysis type, identify which sections need calibration and provide updated versions ONLY for those sections that need changes.
 
-For each analysis type (JIRA, GitHub, Google Docs), provide:
-- A calibrated version that ensures fairness
-- Brief notes on any adjustments made for calibration
-- Confirmation that the evaluation is appropriate for the engineer's level
+**Important**: Only update sections that need calibration. If a section is already fair and appropriate for the engineer's level, do NOT include it in your response.
+
+For each analysis that needs calibration, identify sections by their header (e.g., "Executive Summary", "1. Document Quality Analysis", "Areas for Improvement", etc.) and provide:
+- The section title
+- The updated section content
+- Brief notes on why this section needed calibration
 
 Format your response as JSON with this structure:
 {
@@ -174,8 +184,14 @@ Format your response as JSON with this structure:
       "analyses": [
         {
           "type": "JIRA",
-          "calibrated_content": "...",
-          "calibration_notes": "..."
+          "sections_to_update": [
+            {
+              "section_title": "Executive Summary",
+              "updated_content": "...",
+              "calibration_notes": "Adjusted evaluation to be more appropriate for L4 level expectations"
+            },
+            ...
+          ]
         },
         ...
       ]
@@ -183,11 +199,13 @@ Format your response as JSON with this structure:
     ...
   ]
 }
+
+If no sections need calibration for a particular analysis, include an empty "sections_to_update" array.
 """
 
     messages = [
         SystemMessage(
-            content="You are an expert at evaluating engineering performance reviews for fairness, consistency, and level-appropriateness."
+            content="You are an expert at evaluating engineering performance reviews for fairness, consistency, and level-appropriateness. You only update sections that need calibration, leaving well-calibrated sections unchanged."
         ),
         HumanMessage(content=calibration_prompt),
     ]
@@ -200,8 +218,75 @@ Format your response as JSON with this structure:
         return None
 
 
+def update_file_sections(file_path: Path, sections_to_update: list[dict]) -> bool:
+    """Update specific sections in a markdown file in place."""
+    if not file_path.exists():
+        return False
+
+    # Read original content
+    with open(file_path, encoding="utf-8") as f:
+        original_content = f.read()
+
+    # Update sections from end to start to preserve positions
+    updated_content = original_content
+    sections_to_update_sorted = sorted(
+        sections_to_update,
+        key=lambda x: find_section_in_content(updated_content, x["section_title"]) or (0, 0),
+        reverse=True,  # Process from end to start
+    )
+
+    for section_update in sections_to_update_sorted:
+        section_title = section_update["section_title"]
+        updated_section_content = section_update["updated_content"]
+
+        # Find section boundaries
+        section_pos = find_section_in_content(updated_content, section_title)
+        if not section_pos:
+            print(f"  ⚠️  Section not found: {section_title}")
+            continue
+
+        start_pos, end_pos = section_pos
+
+        # Extract the section header
+        lines = updated_content[:end_pos].split("\n")
+        section_start_line_idx = None
+        for i, line in enumerate(lines):
+            if re.match(rf"^#+\s+{re.escape(section_title)}\s*$", line, re.IGNORECASE):
+                section_start_line_idx = i
+                break
+
+        if section_start_line_idx is None:
+            continue
+
+        # Get the header line
+        header_line = lines[section_start_line_idx]
+
+        # Replace section content (keeping header)
+        before_section = updated_content[:start_pos]
+        after_section = updated_content[end_pos:]
+
+        # Ensure updated content starts with header if it doesn't already
+        if not updated_section_content.strip().startswith("#"):
+            updated_section = f"{header_line}\n\n{updated_section_content}"
+        else:
+            updated_section = updated_section_content
+
+        # Ensure proper spacing
+        if not updated_section.endswith("\n"):
+            updated_section += "\n"
+
+        updated_content = before_section + updated_section + after_section
+        print(f"  ✓ Updated section: {section_title}")
+
+    # Write back to file
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(updated_content)
+
+    return True
+
+
 def save_calibrated_reports(calibration_result, period):
-    """Save calibrated reports to files."""
+    """Update analysis reports in place with calibrated sections."""
     import json as json_lib
 
     try:
@@ -209,8 +294,6 @@ def save_calibrated_reports(calibration_result, period):
         calibration_data = json_lib.loads(calibration_result)
     except (json_lib.JSONDecodeError, ValueError):
         # If not JSON, try to extract JSON from markdown code blocks
-        import re
-
         json_match = re.search(r"```json\n(.*?)\n```", calibration_result, re.DOTALL)
         if json_match:
             try:
@@ -240,40 +323,44 @@ def save_calibrated_reports(calibration_result, period):
                 print("❌ Could not parse calibration result as JSON")
                 return False
 
-    saved_count = 0
+    updated_count = 0
     for report_group in calibration_data.get("calibrated_reports", []):
         user = report_group.get("user")
         user_slug = slugify(user)
 
         for analysis in report_group.get("analyses", []):
             analysis_type = analysis.get("type")
-            calibrated_content = analysis.get("calibrated_content", "")
+            sections_to_update = analysis.get("sections_to_update", [])
 
-            if not calibrated_content:
+            if not sections_to_update:
                 continue
 
             # Map analysis type to filename
             filename_map = {
-                "JIRA": "jira-analysis-calibrated.md",
-                "GitHub": "github-review-analysis-calibrated.md",
-                "Google Docs": "gdocs-analysis-calibrated.md",
+                "JIRA": "jira-analysis.md",
+                "GitHub": "github-review-analysis.md",
+                "Google Docs": "gdocs-analysis.md",
             }
 
             filename = filename_map.get(analysis_type)
             if not filename:
                 continue
 
-            # Save calibrated report
+            # Update file in place
             report_path = Path(f"reports/{user_slug}/{period}/{filename}")
-            report_path.parent.mkdir(parents=True, exist_ok=True)
+            if report_path.exists():
+                print(f"\n📝 Calibrating {analysis_type} analysis for {user}:")
+                if update_file_sections(report_path, sections_to_update):
+                    updated_count += 1
+                    # Print calibration notes
+                    for section_update in sections_to_update:
+                        notes = section_update.get("calibration_notes", "")
+                        if notes:
+                            print(f"    Note: {notes}")
+            else:
+                print(f"⚠️  File not found: {report_path}")
 
-            with open(report_path, "w", encoding="utf-8") as f:
-                f.write(calibrated_content)
-
-            saved_count += 1
-            print(f"✅ Saved calibrated report: {report_path}")
-
-    return saved_count > 0
+    return updated_count > 0
 
 
 def main():

@@ -31,7 +31,15 @@ def main():
         "gdocs-analysis.md",
     ]
 
+    # Old calibrated file patterns (from before in-place calibration)
+    calibrated_files = [
+        "jira-analysis-calibrated.md",
+        "github-review-analysis-calibrated.md",
+        "gdocs-analysis-calibrated.md",
+    ]
+
     removed_count = 0
+    calibrated_removed_count = 0
     artifacts_removed_count = 0
     for user_dir in reports_dir.iterdir():
         if not user_dir.is_dir():
@@ -49,6 +57,14 @@ def main():
                 removed_count += 1
                 print(f"✓ Removed {file_path}")
 
+        # Remove old calibrated files (no longer used - calibration now updates in place)
+        for calibrated_file in calibrated_files:
+            file_path = period_dir / calibrated_file
+            if file_path.exists():
+                file_path.unlink()
+                calibrated_removed_count += 1
+                print(f"✓ Removed old calibrated file: {file_path}")
+
         # Remove artifacts directory
         artifacts_dir = period_dir / "artifacts"
         if artifacts_dir.exists() and artifacts_dir.is_dir():
@@ -64,6 +80,8 @@ def main():
             print(f"✓ Removed artifacts directory: {artifacts_dir} ({len(artifact_files)} files)")
 
     print(f"\n✅ Removed {removed_count} analysis files for period {period}")
+    if calibrated_removed_count > 0:
+        print(f"✅ Removed {calibrated_removed_count} old calibrated files for period {period}")
     if artifacts_removed_count > 0:
         print(f"✅ Removed {artifacts_removed_count} artifact files for period {period}")
 

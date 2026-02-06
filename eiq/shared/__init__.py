@@ -1,39 +1,26 @@
-"""
-Shared utilities for CLI tools.
+"""Shared utilities for EIQ analysis tools."""
 
-This package provides common functionality used by both gh-analyze and jira-analyze:
-- CLI utilities (slugify, period parsing, user resolution)
-- Configuration utilities (config loading, creation)
-"""
-
-from .cli_utils import (
-    determine_output_dir,
-    parse_period,
-    resolve_time_range,
-    resolve_user_identity,
-    slugify,
-    unslugify,
+from eiq.shared.ai_utils import get_vertex_ai_llm, load_ladder_criteria
+from eiq.shared.cli_utils import determine_output_dir, parse_period, slugify
+from eiq.shared.config_loader import (
+    find_user_by_identifier,
+    find_user_by_slug,
+    get_all_users,
+    load_config,
 )
-from .config_utils import (
-    create_github_config,
-    create_jira_config,
-    format_analysis_period,
-    load_centralized_config,
-    user_exists_in_config,
-)
+from eiq.shared.rich_utils import RICH_AVAILABLE, get_console, print_rich
 
 __all__ = [
-    # CLI utilities
+    "get_vertex_ai_llm",
+    "load_ladder_criteria",
     "determine_output_dir",
     "parse_period",
-    "resolve_time_range",
-    "resolve_user_identity",
     "slugify",
-    "unslugify",
-    # Config utilities
-    "create_github_config",
-    "create_jira_config",
-    "format_analysis_period",
-    "load_centralized_config",
-    "user_exists_in_config",
+    "find_user_by_identifier",
+    "find_user_by_slug",
+    "get_all_users",
+    "load_config",
+    "RICH_AVAILABLE",
+    "get_console",
+    "print_rich",
 ]

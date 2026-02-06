@@ -37,6 +37,7 @@ from langgraph.graph import END, StateGraph  # noqa: E402
 
 # Import ladder utilities for level-based evaluation
 try:
+    from eiq.shared.ai_utils import get_vertex_ai_llm
     from eiq.shared.ladder_utils import format_level_criteria_for_prompt
 except ImportError:
     # Fallback if ladder utils not available
@@ -61,16 +62,9 @@ except ImportError:
     BarColumn = None  # type: ignore[assignment]
     TimeElapsedColumn = None  # type: ignore[assignment]
 
-# Use new langchain-google-genai package (supports Vertex AI)
-# Set Vertex AI mode before importing
+# Vertex AI is now handled via shared ai_utils.get_vertex_ai_llm()
+# Set Vertex AI mode before importing shared utilities
 os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
-try:
-    from langchain_google_genai import ChatGoogleGenerativeAI
-except ImportError:
-    # Fallback to deprecated package if new one not available
-    from langchain_google_vertexai import (  # type: ignore[import-untyped]
-        ChatVertexAI as ChatGoogleGenerativeAI,
-    )
 
 # Constants
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
@@ -676,23 +670,8 @@ def analyze_with_vertexai(state: AnalysisState) -> AnalysisState:
         )
         return state
 
-    # Use ChatGoogleGenerativeAI with Vertex AI mode
-    # Ensure Vertex AI mode is enabled and set project/location
-    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
-    os.environ["GOOGLE_CLOUD_PROJECT"] = project
-    os.environ["GOOGLE_CLOUD_LOCATION"] = location
-    # Set quota project to suppress authentication warnings
-    os.environ["GOOGLE_CLOUD_QUOTA_PROJECT"] = project
-
-    # Initialize LLM - will use Vertex AI automatically due to env vars
-    # The new package uses 'model' parameter, old package uses 'model_name'
-    try:
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3)
-    except TypeError:
-        # Fallback for old API if needed
-        llm = ChatGoogleGenerativeAI(
-            model_name="gemini-2.5-pro", project=project, location=location, temperature=0.3
-        )
+    # Initialize Vertex AI LLM using shared utility (ensures gemini-2.5-pro)
+    llm = get_vertex_ai_llm(project, location, temperature=0.3)
 
     # Load report template
     with open(TEMPLATE_PATH) as f:

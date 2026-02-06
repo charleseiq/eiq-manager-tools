@@ -10,6 +10,9 @@ scripts/jira-analyze -n varun-sundar -p 2025H2
 
 # Or using just
 just jira-analyze -n varun-sundar -p 2025H2
+
+# Run for all users in config.json
+just jira-analyze -a -p 2025H2
 ```
 
 ## Features
@@ -73,8 +76,11 @@ Add users to `config.json`:
 ### Basic Commands
 
 ```bash
-# Using slugified name (recommended - no quotes needed)
+# Using slugified name with flags (recommended - no quotes needed)
 scripts/jira-analyze -n varun-sundar -p 2025H2
+
+# Using positional arguments (backward compatible)
+scripts/jira-analyze varun-sundar 2025H2
 
 # Using full name (requires quotes)
 scripts/jira-analyze -n "Varun Sundar" -p 2025H2

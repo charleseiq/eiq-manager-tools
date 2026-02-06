@@ -69,6 +69,7 @@ from eiq.shared.cli_utils import (
     resolve_time_range,
     resolve_user_identity,
 )
+from eiq.shared.config_loader import get_all_users, load_config
 from eiq.shared.config_utils import (
     create_github_config,
     load_centralized_config,
@@ -104,18 +105,42 @@ def main():
         epilog=__doc__,
     )
 
+    # All users option
+    parser.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="Run analysis for all users in config.json (requires -p/--period)",
+    )
+
     # Name/username options (mutually complementary)
     parser.add_argument(
         "-n",
         "--name",
-        help="Person's name in slugified format (e.g., 'varun-sundar'). Full names with spaces are also supported but require quotes.",
+        help="Person's name in slugified format (e.g., 'varun-sundar'). Full names with spaces are also supported but require quotes. Can also be provided as first positional argument.",
     )
     parser.add_argument("-u", "--username", help="GitHub username")
 
     # Period/dates options (mutually complementary)
-    parser.add_argument("-p", "--period", help="Period key (e.g., '2025H2')")
+    parser.add_argument(
+        "-p",
+        "--period",
+        help="Period key (e.g., '2025H2'). Can also be provided as second positional argument.",
+    )
     parser.add_argument("-s", "--start", type=validate_date, help="Start date (YYYY-MM-DD)")
     parser.add_argument("-e", "--end", type=validate_date, help="End date (YYYY-MM-DD)")
+
+    # Positional arguments for backward compatibility
+    parser.add_argument(
+        "positional_name",
+        nargs="?",
+        help="User name (positional, same as -n/--name). Ignored if -n/--name is provided.",
+    )
+    parser.add_argument(
+        "positional_period",
+        nargs="?",
+        help="Period string (positional, same as -p/--period). Ignored if -p/--period is provided.",
+    )
 
     # Common options
     parser.add_argument(
@@ -134,17 +159,35 @@ def main():
 
     args = parser.parse_args()
 
+    # Handle --all option
+    if args.all:
+        if not args.period and not args.positional_period:
+            parser.error("--all requires -p/--period")
+        if args.name or args.username or args.positional_name:
+            parser.error("Cannot provide -n/--name, -u/--username, or positional name with --all")
+        if args.start or args.end:
+            parser.error("Cannot provide --start/--end with --all")
+
+        # Run for all users
+        _run_for_all_users(args, parser)
+        return
+
+    # Resolve name and period (prefer flags, fallback to positional)
+    name = args.name or args.positional_name
+    username_arg = args.username
+    period = args.period or args.positional_period
+
     # Validate: need at least one of (name OR username) AND one of (period OR start+end)
-    has_identifier = bool(args.name or args.username)
-    has_time_range = bool(args.period or (args.start and args.end))
+    has_identifier = bool(name or username_arg)
+    has_time_range = bool(period or (args.start and args.end))
 
     if not has_identifier:
-        parser.error("Must provide either -n/--name or --username")
+        parser.error("Must provide either -n/--name or --username (or use --all)")
 
     if not has_time_range:
         parser.error("Must provide either -p/--period or both --start and --end")
 
-    if args.period and (args.start or args.end):
+    if period and (args.start or args.end):
         parser.error("Cannot provide both -p/--period and --start/--end")
 
     # Load centralized config if it exists
@@ -153,11 +196,11 @@ def main():
     config_data = load_centralized_config(centralized_config)
 
     # Resolve name and username
-    name, username = _resolve_user_identity(args.name, args.username, config_data, parser)
+    name, username = _resolve_user_identity(name, username_arg, config_data, parser)
 
     # Resolve period and dates
     period_key, start_date, end_date = resolve_time_range(
-        args.period, args.start, args.end, config_data, parser
+        period, args.start, args.end, config_data, parser
     )
 
     # Validate credentials
@@ -218,6 +261,82 @@ def main():
         period_key,
         output_dir,
     )
+
+
+def _run_for_all_users(args, parser):
+    """Run analysis for all users in config.json."""
+    # Load config
+    script_dir = Path(__file__).parent
+    config_file_path = script_dir.parent / "config.json"
+
+    try:
+        config = load_config(config_file_path)
+    except FileNotFoundError:
+        parser.error("config.json not found. --all requires a centralized config.json")
+
+    users = get_all_users(config)
+    if not users:
+        parser.error("No users found in config.json")
+
+    period = args.period
+    if not period:
+        parser.error("--all requires -p/--period")
+
+    # Resolve period to dates
+    _, start_date, end_date = resolve_time_range(period, None, None, config, parser)
+
+    # Validate credentials
+    github_token = args.github_token or os.getenv("GITHUB_TOKEN")
+    vertexai_project = args.project or os.getenv("GOOGLE_CLOUD_PROJECT")
+
+    if not github_token:
+        parser.error(
+            "GitHub token required. Set --github-token or GITHUB_TOKEN environment variable"
+        )
+
+    if not vertexai_project:
+        parser.error(
+            "Google Cloud project required. Set --project or GOOGLE_CLOUD_PROJECT environment variable"
+        )
+
+    print(f"\n🚀 Running GitHub analysis for {len(users)} users for period {period}")
+    print("=" * 60)
+
+    # Run analysis for each user
+    for user in users:
+        user_name = user.get("name", user.get("username", ""))
+        username = user.get("username", "")
+
+        print(f"\n📊 Processing {user_name}...")
+
+        # Determine output directory
+        output_dir = determine_output_dir(None, user_name, username, period)
+
+        # Create config file
+        if config_file_path.exists():
+            config_file = config_file_path
+        else:
+            config_file = create_github_config(
+                username, start_date, end_date, args.org, Path(output_dir)
+            )
+
+        # Run workflow
+        assert github_token is not None
+        assert vertexai_project is not None
+        _run_workflow(
+            script_dir,
+            config_file,
+            github_token,
+            vertexai_project,
+            args.location,
+            username,
+            period,
+            output_dir,
+        )
+
+        print(f"✅ Analysis complete for {user_name}")
+
+    print(f"\n✅ GitHub analysis complete for all users for period {period}")
 
 
 def _run_workflow(

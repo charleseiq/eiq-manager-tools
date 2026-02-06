@@ -1,16 +1,26 @@
 # Engineering Performance Analysis Tools
 
-A comprehensive suite of CLI tools for analyzing engineering performance across GitHub PR reviews, JIRA sprint/epic tracking, and Google Docs technical design documents. Built with LangGraph workflows and Google Cloud Vertex AI.
+A comprehensive suite of CLI tools for analyzing engineering performance across GitHub PR reviews, JIRA sprint/epic tracking, Google Docs technical design documents, and performance notes. Built with LangGraph workflows and Google Cloud Vertex AI.
+
+## Features
+
+- **Multi-source Analysis**: GitHub PRs, JIRA sprints/epics, Google Docs, and performance notes
+- **Level-Based Evaluation**: Automatic inclusion of organizational ladder criteria based on engineer level
+- **Fair Benchmarking**: Calibration ensures consistent evaluation across users and levels
+- **Holistic Reviews**: Combines quantitative metrics with qualitative feedback
+- **Batch Processing**: Run analyses for all users with a single command (`just analyze-all`) or individual analysis types (`-a` flag)
+- **Human Context**: Notes folder for self-reviews, feedback, and additional context
 
 ## Overview
 
-This repository provides three complementary analysis tools:
+This repository provides four complementary analysis tools:
 
 1. **[GitHub PR Review Analysis](eiq/gh-analysis/README.md)** (`gh-analyze`) - Analyzes code review quality, comment classification, and cross-boundary contributions
 2. **[JIRA Sprint & Epic Analysis](eiq/jira-analysis/README.md)** (`jira-analyze`) - Tracks sprint performance, velocity, epic allocation, and worklog patterns
 3. **[Google Docs Analysis](eiq/gdocs-analysis/README.md)** (`gdocs-analyze`) - Evaluates technical design document quality, comment responses, and team engagement
+4. **Notes Analysis** (`notes-analyze`) - Analyzes self-reviews, feedback, and other notes files with ladder criteria
 
-Together, these tools provide a comprehensive view of engineering performance across code review, planning, and documentation.
+Together, these tools provide a comprehensive view of engineering performance across code review, planning, documentation, and qualitative feedback.
 
 ## Quick Start
 
@@ -81,10 +91,46 @@ Create a centralized `config.json` at the repository root:
 }
 ```
 
-**Note:** 
+**Note:**
 - The `email` field is used for both JIRA and Google Drive authentication. Use the same email for both.
 - The `level` field (e.g., "L4", "L5") is used to include level-specific evaluation criteria from the organizational ladder in analysis prompts. This ensures evaluations are aligned with expectations for the engineer's level.
-- `drive_folder_ids` and `document_types` are optional (deprecated). By default, Google Docs analysis searches all documents owned by the user.
+
+## Consistent Command-Line Interface
+
+All analysis tools (`gh-analyze`, `jira-analyze`, `gdocs-analyze`, `notes-analyze`, `generate-review`) use consistent flags:
+
+- **`-n, --name NAME`** - User name (slugified format recommended)
+- **`-p, --period PERIOD`** - Period string (YYYYH1, YYYYH2, YYYYQ1-Q4, YYYY)
+- **`-a, --all`** - Run for all users in config.json (requires `-p/--period`)
+- **Positional arguments** - First arg = name, second arg = period (backward compatible)
+
+**Examples:**
+```bash
+# Single user (flags - recommended)
+just gh-analyze -n varun-sundar -p 2025H2
+just jira-analyze -n varun-sundar -p 2025H2
+just gdocs-analyze -n varun-sundar -p 2025H2
+just notes-analyze -n ariel-ledesma -p 2025H2
+just generate-review -n ariel-ledesma -p 2025H2
+
+# All users (flags - recommended)
+just gh-analyze -a -p 2025H2
+just jira-analyze -a -p 2025H2
+just gdocs-analyze -a -p 2025H2
+just notes-analyze -a -p 2025H2
+just generate-review -a -p 2025H2
+
+# Single user (positional - backward compatible)
+just gh-analyze varun-sundar 2025H2
+just notes-analyze ariel-ledesma 2025H2
+just generate-review ariel-ledesma 2025H2
+
+# All users (positional - backward compatible, but -a flag preferred)
+just generate-review -p 2025H2  # Still works, but -a is clearer
+just generate-review 2025H2      # Still works, but -a is clearer
+```
+
+**Note:** Flags take precedence over positional arguments. If both are provided, flags are used.
 
 ## Level-Based Evaluation
 
@@ -98,10 +144,10 @@ This dual approach ensures:
 - Growth areas are clearly identified for promotion readiness
 - Actionable feedback focuses on both meeting current level and developing toward next level
 
-The ladder criteria cover:
-- **Technical skills**: Code quality, testing, debugging, observability, architecture
-- **Delivery**: Work breakdown, prioritization, accountability, tradeoffs
-- **Feedback, Communication, Collaboration**: Feedback delivery, communication, knowledge sharing, team support
+The ladder criteria are organized by four main dimensions:
+- **Technical Skills**: Quality, operational excellence, design & architecture
+- **Delivery**: Incremental value delivery, self-organization
+- **Feedback, Communication, Collaboration**: Feedback, communication, collaboration
 - **Leadership**: Process thinking, influence, mentoring, strategy
 
 ## Adding New Users
@@ -137,11 +183,17 @@ The notes folder complements automated analysis and provides the human context t
 Analyzes PR review contributions, comment quality, and cross-boundary work. Evaluations are tailored to the engineer's level when specified in config.
 
 ```bash
-# Using slugified name (recommended)
+# Using slugified name with flags (recommended)
 scripts/gh-analyze -n varun-sundar -p 2025H2
+
+# Or using positional arguments (backward compatible)
+scripts/gh-analyze varun-sundar 2025H2
 
 # Or using just
 just gh-analyze -n varun-sundar -p 2025H2
+
+# Run for all users in config.json
+just gh-analyze -a -p 2025H2
 ```
 
 **Features:**
@@ -157,11 +209,17 @@ just gh-analyze -n varun-sundar -p 2025H2
 Tracks sprint performance, velocity trends, and epic allocation for time tracking and reporting.
 
 ```bash
-# Using slugified name (recommended)
+# Using slugified name with flags (recommended)
 scripts/jira-analyze -n varun-sundar -p 2025H2
+
+# Or using positional arguments (backward compatible)
+scripts/jira-analyze varun-sundar 2025H2
 
 # Or using just
 just jira-analyze -n varun-sundar -p 2025H2
+
+# Run for all users in config.json
+just jira-analyze -a -p 2025H2
 ```
 
 **Features:**
@@ -177,6 +235,15 @@ just jira-analyze -n varun-sundar -p 2025H2
 Evaluates technical design documents, comment responses, and team engagement.
 
 ```bash
+# Using slugified name with flags (recommended)
+just gdocs-analyze -n varun-sundar -p 2025H2
+
+# Or using positional arguments (backward compatible)
+just gdocs-analyze varun-sundar 2025H2
+
+# Run for all users in config.json
+just gdocs-analyze -a -p 2025H2
+```
 # Using slugified name (recommended)
 scripts/gdocs-analyze -n varun-sundar -p 2025H2
 
@@ -187,6 +254,7 @@ just gdocs-analyze -n varun-sundar -p 2025H2
 **Features:**
 - Document quality evaluation (problem clarity, concept clarity, execution path)
 - Owner filtering (only analyzes documents owned by the user)
+- Date filtering (only includes documents **created** during the period, not just modified)
 - Automatic document discovery (searches all Google Docs owned by user)
 - Comment response analysis
 - Team engagement metrics
@@ -200,28 +268,45 @@ just gdocs-analyze -n varun-sundar -p 2025H2
 
 ### Clean Analysis Reports
 
-Remove all analysis reports for a specified period:
+Remove all analysis reports and artifacts for a specified period:
 
 ```bash
 just clean 2025H2
 ```
 
-This removes `jira-analysis.md`, `github-review-analysis.md`, and `gdocs-analysis.md` files for all users in the specified period.
+This removes:
+- All analysis report files (`jira-analysis.md`, `github-review-analysis.md`, `gdocs-analysis.md`)
+- All old `*-calibrated.md` files (from before in-place calibration was implemented)
+- All `artifacts/` directories (containing converted Google Docs markdown files)
+
+for all users in the specified period.
+
+**Note:** Calibration now updates analysis files in place, so separate `-calibrated.md` files are no longer created. Any existing `-calibrated.md` files are legacy and will be removed by this command.
 
 ### Run All Analyses
 
-Run all three analysis tools for all users in parallel:
+Run all three analysis tools for all users sequentially:
 
 ```bash
 just analyze-all 2025H2
 ```
 
 This command:
-1. Runs `gh-analyze`, `jira-analyze`, and `gdocs-analyze` for all users in `config.json` in parallel
-2. Calibrates all reports to ensure fair benchmarking across users and levels
-3. Generates holistic review packages (`review-package.md`) for each user
+1. Runs `gh-analyze`, `jira-analyze`, and `gdocs-analyze` for all users in `config.json` sequentially (one at a time). You can also run individual analyses for all users using the `-a` flag: `just gh-analyze -a -p 2025H2`
+2. Shows all progress bars and loading indicators from each analysis in real-time
+3. Calibrates all reports to ensure fair benchmarking across users and levels
+4. Analyzes notes files (`notes-analysis.md`) for each user
+5. Generates holistic review packages (`review-package.md`) for each user
 
-**Note:** This can take significant time depending on the number of users and data volume. Progress is shown for each analysis.
+**Note:**
+- Analyses run sequentially to avoid rate limiting and provide clear progress visibility
+- This can take significant time depending on the number of users and data volume
+- All Rich progress bars from individual analyses are displayed in real-time
+- You can also run individual analysis types for all users using the `-a` flag:
+  - `just gh-analyze -a -p 2025H2` - GitHub analysis for all users
+  - `just jira-analyze -a -p 2025H2` - JIRA analysis for all users
+  - `just gdocs-analyze -a -p 2025H2` - Google Docs analysis for all users
+  - `just notes-analyze -a -p 2025H2` - Notes analysis for all users
 
 ### Calibrate Reports
 
@@ -231,31 +316,86 @@ After running analyses, calibrate reports to ensure fairness:
 just calibrate 2025H2
 ```
 
-This creates calibrated versions (`*-calibrated.md`) of each analysis report that:
+This updates analysis reports in place, modifying only sections that need calibration to ensure:
 - Ensure evaluations are appropriate for each engineer's level
 - Maintain consistency across engineers at the same level
 - Account for level-specific expectations from the organizational ladder
 - Provide fair and constructive feedback
+
+### Analyze Notes Files
+
+Analyze all markdown files in the notes folder (self-reviews, feedback, etc.):
+
+```bash
+# Analyze notes for a specific user (using flags)
+just notes-analyze -n ariel-ledesma -p 2025H2
+
+# Or using positional arguments
+just notes-analyze ariel-ledesma 2025H2
+
+# Analyze notes for all users
+just notes-analyze -a -p 2025H2
+
+# Or use the dedicated batch script
+# (automatically called by analyze-all)
+```
+
+This creates `notes-analysis.md` files that:
+- Analyze all `.md` files in the `notes/` folder (excluding `README.md` and `lattice.md`)
+- Combine notes with level-appropriate ladder criteria
+- Identify themes, patterns, and insights across all notes
+- Provide actionable insights for performance evaluation
 
 ### Generate Review Packages
 
 Generate holistic review packages that combine all analyses:
 
 ```bash
-just review-package 2025H2
+# Generate review packages for all users (recommended)
+just generate-review -a -p 2025H2
+
+# Or backward compatible (still works, but -a is clearer):
+just generate-review -p 2025H2
+just generate-review 2025H2
+
+# Generate review package for a specific user
+just generate-review -n ariel-ledesma -p 2025H2
+
+# Or using positional arguments
+just generate-review ariel-ledesma 2025H2
+
+# Or use the legacy alias
+just review-package -a -p 2025H2
 ```
 
 This creates `review-package.md` files for each user that include:
-- All analysis reports (calibrated versions if available)
-- Self-reviews from the `notes/` folder
+- All analysis reports (updated in place by calibration if run)
+- Notes analysis (comprehensive analysis of all notes files)
 - 1:1 meeting notes (`lattice.md` if available)
 - Level-appropriate evaluation criteria
+- Well-formatted markdown with proper headings and structure
 - Structured answers to review questions:
   - Key achievements and impact
   - Challenges and improvement suggestions
   - Development focus areas
   - Ratings for Technical Skills, Delivery, Communication/Collaboration, Leadership
   - Overall performance rating
+
+**Note:** Run `just notes-analyze-all` first to generate notes analysis, or use `just analyze-all` which includes this step.
+
+### Convert PDF Files to Markdown
+
+Convert PDF files (e.g., review documents) to markdown:
+
+```bash
+# Convert all PDFs in reports/ directories
+just convert-pdfs
+
+# Convert PDFs in a specific path
+just convert-pdfs-path reports/ariel-ledesma/2025H2/notes
+```
+
+This is useful for converting PDF review documents to markdown so they can be included in review packages.
 
 ## Common Usage Patterns
 
@@ -295,157 +435,115 @@ All tools generate reports in a consistent structure:
 reports/
 └── <slugified-name>/
     └── <period>/
-        ├── jira-analysis.md
-        ├── jira-analysis-calibrated.md (after calibration)
-        ├── github-review-analysis.md
-        ├── github-review-analysis-calibrated.md (after calibration)
-        ├── gdocs-analysis.md
-        ├── gdocs-analysis-calibrated.md (after calibration)
-        ├── review-package.md (after review-package generation)
-        ├── artifacts/ (Google Docs markdown conversions)
+        ├── jira-analysis.md (updated in place by calibration)
+        ├── github-review-analysis.md (updated in place by calibration)
+        ├── gdocs-analysis.md (updated in place by calibration)
+        ├── notes-analysis.md (after notes-analyze)
+        ├── review-package.md (after generate-review)
+        ├── artifacts/ (Google Docs markdown conversions - removed by `just clean`)
         └── notes/
             ├── README.md
             ├── lattice.md (1:1 meeting notes)
-            └── *.md (self-reviews, feedback, etc.)
-        ├── <tool>-analysis.md    # Main analysis report
-        ├── notes/                 # For ad-hoc markdown files, self-reviews, and feedback
-        │   ├── README.md         # Explains the purpose of the notes folder
-        │   └── <your-files>.md   # Your self-reviews, feedback, etc.
-        ├── config.json            # User config (if individual)
-        └── artifacts/             # Additional artifacts (gdocs only)
-            └── *.md
+            └── *.md (self-reviews, feedback, PDF conversions, etc.)
 ```
 
 **Important**: The `notes/` folder is automatically created in each report directory. Use it to add human context, self-reviews, and feedback that complements the automated analysis. See the [Human Feedback and Notes](#human-feedback-and-notes) section above for more details.
 
-## Development
+## Workflow
 
-### Setup
+### Complete Analysis Workflow
 
-```bash
-# Install dependencies including dev tools
-uv sync --extra dev
-
-# Install pre-commit hooks
-uv run pre-commit install
-
-# Set up authentication (one-time setup)
-just auth
-```
-
-### Running Tests
+For a comprehensive analysis of all users for a period:
 
 ```bash
-# Run all tests
-uv run pytest
+# Step 1: Run all analyses (includes calibration and notes analysis)
+just analyze-all 2025H2
 
-# Run with coverage
-uv run pytest --cov=eiq.gh-analysis --cov-report=html
-
-# Run specific test
-uv run pytest tests/test_analyze_helpers.py
+# This runs:
+# - gh-analyze, jira-analyze, gdocs-analyze for all users
+# - Calibration of all reports
+# - Notes analysis for all users
+# - Review package generation
 ```
 
-### Code Quality
+### Individual Steps
+
+You can also run steps individually:
 
 ```bash
-# Lint code
-uv run ruff check .
+# Step 1: Run individual analyses
+just gh-analyze -n varun-sundar -p 2025H2
+just jira-analyze -n varun-sundar -p 2025H2
+just gdocs-analyze -n varun-sundar -p 2025H2
 
-# Auto-fix linting issues
-uv run ruff check --fix .
+# Or run for all users at once
+just gh-analyze -a -p 2025H2
+just jira-analyze -a -p 2025H2
+just gdocs-analyze -a -p 2025H2
 
-# Format code
-uv run ruff format .
+# Step 2: Calibrate reports (optional but recommended)
+just calibrate 2025H2
 
-# Type checking
-uv run ty check .
-```
+# Step 3: Analyze notes
+just notes-analyze -n varun-sundar -p 2025H2
+# Or using positional arguments:
+just notes-analyze varun-sundar 2025H2
+# Or for all users:
+just notes-analyze -a -p 2025H2
 
-### Pre-commit Hooks
-
-The project uses pre-commit hooks to automatically run linting, type checking, and tests:
-
-```bash
-# Run pre-commit hooks manually
-pre-commit run --all-files
-```
-
-## Project Structure
-
-```
-.
-├── scripts/                # CLI entry points
-│   ├── gh-analyze          # GitHub PR analysis CLI
-│   ├── jira-analyze        # JIRA sprint/epic analysis CLI
-│   └── gdocs-analyze       # Google Docs analysis CLI
-├── config.json             # Centralized configuration
-├── justfile                # Convenience commands
-├── pyproject.toml          # Python dependencies
-├── eiq/                    # Analysis modules
-│   ├── shared/             # Shared CLI utilities
-│   │   ├── cli_utils.py    # Common functions (slugify, period parsing, etc.)
-│   │   └── config_utils.py # Configuration file handling
-│   ├── gh-analysis/        # GitHub PR analysis package
-│   │   ├── workflows/      # LangGraph workflows
-│   │   ├── templates/      # Report templates
-│   │   └── README.md       # Detailed documentation
-│   ├── jira-analysis/      # JIRA analysis package
-│   │   ├── workflows/      # LangGraph workflows
-│   │   ├── templates/      # Report templates
-│   │   └── README.md       # Detailed documentation
-│   └── gdocs-analysis/     # Google Docs analysis package
-│       ├── workflows/      # LangGraph workflows
-│       ├── templates/      # Report templates
-│       └── README.md       # Detailed documentation
-└── tests/                  # Test suite
+# Step 4: Generate review package
+just generate-review -a -p 2025H2  # All users (recommended)
+# Or backward compatible:
+just generate-review -p 2025H2
+just generate-review 2025H2
+# Or for a specific user:
+just generate-review -n varun-sundar -p 2025H2
 ```
 
 ## Architecture
 
-All tools follow a consistent LangGraph workflow pattern:
+### Shared Utilities
+
+The codebase uses shared utilities in `eiq/shared/`:
+
+- **`ai_utils.py`**: Vertex AI LLM setup and ladder criteria loading
+- **`config_loader.py`**: Configuration loading and user lookup utilities
+- **`cli_utils.py`**: CLI utilities (slugify, period parsing, output directory resolution)
+- **`ladder_utils.py`**: Organizational ladder parsing and formatting
+- **`rich_utils.py`**: Rich console utilities for progress display
+
+### Workflow Structure
+
+Each analysis tool uses a LangGraph workflow:
 
 ```
-load_config → fetch_data → analyze → generate → save → END
+load_config → fetch_data → analyze_with_vertexai → generate_report → save_report → END
 ```
 
-- **load_config**: Loads user and period configuration from centralized or individual config
-- **fetch_data**: Queries APIs (GitHub/JIRA/Google Drive) for relevant data
-- **analyze**: Uses Vertex AI (gemini-2.5-pro) to generate intelligent analysis
-- **generate**: Formats analysis into markdown report using Jinja2 templates
-- **save**: Writes report to file system
+The workflows are stateful and pass data through a `TypedDict` state object, ensuring type safety and clear data flow.
 
-See individual module READMEs for workflow-specific details.
+## Development
 
-## Troubleshooting
+### Running Tests
 
-### Common Issues
-
-**"Token required" errors:**
-- Ensure `.env` file exists and contains required tokens
-- Check that environment variables are set correctly
-
-**"Google Cloud project required":**
 ```bash
-export GOOGLE_CLOUD_PROJECT=eiq-development
+just test
 ```
 
-**"ModuleNotFoundError":**
+### Formatting Code
+
 ```bash
-uv sync --extra dev
+just format
 ```
 
-**Authentication Issues:**
-- GitHub: Verify token has correct scopes
-- JIRA: Check API token and EVOLUTIONIQ_EMAIL match
-- Google Drive: Run `just auth` to set up authentication using Secret Manager (see [gdocs-analysis README](eiq/gdocs-analysis/README.md))
+### Pre-commit Hooks
 
-### Getting Help
-
-- Check individual tool READMEs for tool-specific issues
-- Review `.env.example` for required environment variables
-- Check `config.json` structure matches expected format
+Pre-commit hooks run automatically on `git commit`:
+- `ruff check` - Linting
+- `ruff format` - Code formatting
+- `ty check` - Type checking
+- `pytest` - Unit tests
 
 ## License
 
-Internal tool for EvolutionIQ.
+[Add your license here]

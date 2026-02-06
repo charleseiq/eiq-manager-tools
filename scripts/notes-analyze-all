@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""
+Run notes analysis for all users in config.json for a specified period.
+
+Usage:
+    python scripts/notes-analyze-all <period>
+    e.g., python scripts/notes-analyze-all 2025H2
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+# Add parent directory to path so we can import eiq modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from eiq.shared.cli_utils import slugify
+from eiq.shared.config_loader import get_all_users, load_config
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python scripts/notes-analyze-all <period>")
+        print("Example: python scripts/notes-analyze-all 2025H2")
+        sys.exit(1)
+
+    period = sys.argv[1]
+
+    # Load config
+    try:
+        config = load_config()
+    except FileNotFoundError:
+        print("❌ config.json not found")
+        sys.exit(1)
+
+    users = get_all_users(config)
+    if not users:
+        print("❌ No users found in config.json")
+        sys.exit(1)
+
+    print(f"📝 Analyzing notes for {len(users)} users for period {period}")
+    print("=" * 60)
+
+    # Run notes analysis for each user sequentially
+    for user in users:
+        user_name = user.get("name") or "Unknown"
+        user_slug = slugify(user_name)
+        print(f"\n📊 Processing {user_name}...")
+
+        result = subprocess.run(
+            ["uv", "run", "python", "scripts/notes-analyze", user_slug, period],
+            timeout=600,  # 10 minute timeout
+        )
+
+        if result.returncode == 0:
+            print(f"✅ Notes analysis complete for {user_name}")
+        else:
+            print(f"❌ Notes analysis failed for {user_name}")
+
+    print(f"\n✅ Notes analysis complete for period {period}")
+
+
+if __name__ == "__main__":
+    main()

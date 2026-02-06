@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""
+Analyze notes files (self-reviews, feedback, etc.) for a user in a period.
+
+This script:
+1. Loads all .md files from the notes folder (excluding README.md and lattice.md)
+2. Combines them with ladder criteria for the user's level
+3. Generates an analysis using AI
+4. Saves notes-analysis.md in the period directory
+"""
+
+import os
+import sys
+from pathlib import Path
+
+# Add parent directory to path so we can import eiq modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from eiq.shared.ai_utils import get_vertex_ai_llm, load_ladder_criteria
+from eiq.shared.cli_utils import slugify
+from eiq.shared.config_loader import find_user_by_slug, get_all_users, load_config
+from eiq.shared.rich_utils import get_console
+
+
+def load_notes_files(user, period):
+    """Load all relevant markdown files from notes folder."""
+    user_slug = slugify(user.get("name", user.get("username", "")))
+    notes_dir = Path(f"reports/{user_slug}/{period}/notes")
+
+    if not notes_dir.exists():
+        return []
+
+    notes_files = []
+    # Exclude README.md and lattice.md (they're handled separately)
+    exclude_files = {"README.md", "lattice.md"}
+
+    for note_file in notes_dir.glob("*.md"):
+        if note_file.name in exclude_files:
+            continue
+
+        with open(note_file, encoding="utf-8") as f:
+            content = f.read()
+
+        notes_files.append(
+            {
+                "filename": note_file.name,
+                "content": content,
+            }
+        )
+
+    return notes_files
+
+
+def analyze_notes(user, period, notes_files, project, location):
+    """Analyze notes files using AI."""
+    console = get_console()
+    if console:
+        console.print(f"📝 [cyan]Analyzing notes for {user.get('name')}...[/cyan]")
+    else:
+        print(f"📝 Analyzing notes for {user.get('name')}...")
+
+    # Initialize Vertex AI
+    llm = get_vertex_ai_llm(project, location, temperature=0.3)
+
+    # Build context
+    level = user.get("level", "")
+    ladder_criteria = load_ladder_criteria(level, include_next_level=True) if level else ""
+
+    context_parts = [
+        f"# Notes Analysis for {user.get('name')} (Level {level})",
+        f"**Review Period**: {period}",
+        "",
+    ]
+
+    if ladder_criteria:
+        context_parts.append("## Level Expectations")
+        context_parts.append(ladder_criteria)
+        context_parts.append("")
+
+    if notes_files:
+        context_parts.append("## Notes Files")
+        context_parts.append("")
+        for note in notes_files:
+            context_parts.append(f"### {note['filename']}")
+            context_parts.append("")
+            context_parts.append(note["content"])
+            context_parts.append("")
+            context_parts.append("---")
+            context_parts.append("")
+    else:
+        context_parts.append("## Notes Files")
+        context_parts.append("")
+        context_parts.append("No notes files found.")
+        context_parts.append("")
+
+    context = "\n".join(context_parts)
+
+    # Build prompt
+    prompt = f"""Analyze the following notes and feedback for {user.get("name")} (Level {level}) for the period {period}.
+
+{context}
+
+## Your Task
+
+Provide a comprehensive analysis that:
+1. **Summarizes key themes** across all notes files (self-reviews, feedback, etc.)
+2. **Identifies patterns** in feedback, growth areas, and achievements mentioned
+3. **Relates content to level expectations** from the organizational ladder
+4. **Highlights consistency or discrepancies** between different sources
+5. **Extracts actionable insights** for performance evaluation
+
+Format your response as a well-structured markdown document with clear sections:
+- **Summary**: High-level overview of themes and patterns
+- **Key Themes**: Main topics and patterns identified
+- **Level Alignment**: How the notes relate to level expectations
+- **Insights**: Actionable insights for performance evaluation
+- **Recommendations**: Suggestions based on the notes content
+"""
+
+    messages = [
+        SystemMessage(
+            content="You are an expert at analyzing performance notes, self-reviews, and feedback. You identify patterns, themes, and insights that inform performance evaluation."
+        ),
+        HumanMessage(content=prompt),
+    ]
+
+    try:
+        response = llm.invoke(messages)
+        return response.content
+    except Exception as e:
+        print(f"❌ Error analyzing notes: {e}")
+        return None
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Analyze notes files (self-reviews, feedback, etc.) for a user",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="Run analysis for all users in config.json (requires -p/--period)",
+    )
+    parser.add_argument(
+        "-n",
+        "--name",
+        help="User name in slugified format (e.g., ariel-ledesma). Can also be provided as first positional argument.",
+    )
+    parser.add_argument(
+        "-p",
+        "--period",
+        help="Period string (e.g., 2025H2). Can also be provided as second positional argument.",
+    )
+    # Positional arguments for backward compatibility
+    parser.add_argument(
+        "positional_name",
+        nargs="?",
+        help="User slug (positional, same as -n/--name). Ignored if -n/--name is provided.",
+    )
+    parser.add_argument(
+        "positional_period",
+        nargs="?",
+        help="Period string (positional, same as -p/--period). Ignored if -p/--period is provided.",
+    )
+
+    args = parser.parse_args()
+
+    # Handle --all option
+    if args.all:
+        if not args.period and not args.positional_period:
+            parser.error("--all requires -p/--period")
+        if args.name or args.positional_name:
+            parser.error("Cannot provide -n/--name or positional name with --all")
+
+        # Use period from flag or positional
+        period = args.period or args.positional_period
+        if not period:
+            parser.error("--all requires -p/--period")
+
+        # Run for all users
+        _run_for_all_users(period)
+        return
+
+    # Resolve name and period (prefer flags, fallback to positional)
+    user_slug = args.name or args.positional_name
+    period = args.period or args.positional_period
+
+    # Validate arguments for single user
+    if not user_slug:
+        parser.error(
+            "Must provide -n/--name or user slug as first positional argument (or use --all)"
+        )
+    if not period:
+        parser.error("Must provide -p/--period or period as second positional argument")
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4")
+
+    if not project:
+        print("❌ GOOGLE_CLOUD_PROJECT environment variable required")
+        sys.exit(1)
+
+    # Load config to find user
+    try:
+        config = load_config()
+    except FileNotFoundError:
+        print("❌ config.json not found")
+        sys.exit(1)
+
+    user = find_user_by_slug(config, user_slug)
+    if not user:
+        print(f"❌ User '{user_slug}' not found in config.json")
+        sys.exit(1)
+
+    # Load notes files
+    notes_files = load_notes_files(user, period)
+
+    user_name = user.get("name") if user else "Unknown"
+    if not notes_files:
+        print(f"ℹ️  No notes files found for {user_name} in {period}")
+        # Still create an empty analysis file
+        analysis_content = f"# Notes Analysis for {user_name}\n\n**Review Period**: {period}\n\nNo notes files found in the notes folder.\n"
+    else:
+        # Analyze notes
+        analysis_content = analyze_notes(user, period, notes_files, project, location)
+        if not analysis_content:
+            print(f"❌ Failed to generate notes analysis for {user_name}")
+            sys.exit(1)
+
+    # Save analysis
+    period_dir = Path(f"reports/{user_slug}/{period}")
+    period_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_path = period_dir / "notes-analysis.md"
+    with open(analysis_path, "w", encoding="utf-8") as f:
+        f.write(analysis_content)
+
+    console = get_console()
+    if console:
+        console.print(f"✅ [green]Notes analysis saved to {analysis_path}[/green]")
+    else:
+        print(f"✅ Notes analysis saved to {analysis_path}")
+
+
+def _run_for_all_users(period):
+    """Run notes analysis for all users in config.json."""
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4")
+
+    if not project:
+        print("❌ GOOGLE_CLOUD_PROJECT environment variable required")
+        sys.exit(1)
+
+    # Load config
+    try:
+        config = load_config()
+    except FileNotFoundError:
+        print("❌ config.json not found")
+        sys.exit(1)
+
+    users = get_all_users(config)
+    if not users:
+        print("❌ No users found in config.json")
+        sys.exit(1)
+
+    print(f"📝 Analyzing notes for {len(users)} users for period {period}")
+    print("=" * 60)
+
+    # Run analysis for each user
+    for user in users:
+        user_name = user.get("name") if user else "Unknown"
+        user_slug = slugify(user_name or "Unknown")
+
+        print(f"\n📊 Processing {user_name}...")
+
+        # Load notes files
+        notes_files = load_notes_files(user, period)
+
+        if not notes_files:
+            print(f"ℹ️  No notes files found for {user_name} in {period}")
+            # Still create an empty analysis file
+            analysis_content = f"# Notes Analysis for {user_name}\n\n**Review Period**: {period}\n\nNo notes files found in the notes folder.\n"
+        else:
+            # Analyze notes
+            analysis_content = analyze_notes(user, period, notes_files, project, location)
+            if not analysis_content:
+                print(f"❌ Failed to generate notes analysis for {user_name}")
+                continue
+
+        # Save analysis
+        period_dir = Path(f"reports/{user_slug}/{period}")
+        period_dir.mkdir(parents=True, exist_ok=True)
+
+        analysis_path = period_dir / "notes-analysis.md"
+        with open(analysis_path, "w", encoding="utf-8") as f:
+            f.write(analysis_content)
+
+        console = get_console()
+        if console:
+            console.print(f"✅ [green]Notes analysis saved to {analysis_path}[/green]")
+        else:
+            print(f"✅ Notes analysis saved to {analysis_path}")
+
+    print(f"\n✅ Notes analysis complete for all users for period {period}")
+
+
+if __name__ == "__main__":
+    main()

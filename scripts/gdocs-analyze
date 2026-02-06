@@ -86,6 +86,7 @@ from eiq.shared.cli_utils import (
     resolve_time_range,
     resolve_user_identity,
 )
+from eiq.shared.config_loader import get_all_users, load_config
 from eiq.shared.config_utils import (
     load_centralized_config,
 )
@@ -120,6 +121,69 @@ def _print_analysis_summary(
     print(f"Date Range:  {start_date} to {end_date}")
     print(f"Output:      {output_dir}")
     print("=" * 60 + "\n")
+
+
+def _run_for_all_users(args, parser):
+    """Run analysis for all users in config.json."""
+    # Load config
+    script_dir = Path(__file__).parent
+    config_file_path = script_dir.parent / "config.json"
+
+    try:
+        config = load_config(config_file_path)
+    except FileNotFoundError:
+        parser.error("config.json not found. --all requires a centralized config.json")
+
+    users = get_all_users(config)
+    if not users:
+        parser.error("No users found in config.json")
+
+    period = args.period or args.positional_period
+    if not period:
+        parser.error("--all requires -p/--period")
+
+    # Resolve period to dates
+    _, start_date, end_date = resolve_time_range(period, None, None, config, parser)
+
+    # Validate credentials
+    vertexai_project = args.project or os.getenv("GOOGLE_CLOUD_PROJECT")
+
+    if not vertexai_project:
+        parser.error(
+            "Google Cloud project required. Set --project or GOOGLE_CLOUD_PROJECT environment variable"
+        )
+
+    print(f"\n🚀 Running Google Docs analysis for {len(users)} users for period {period}")
+    print("=" * 60)
+
+    # Run analysis for each user
+    for user in users:
+        user_name = user.get("name", user.get("username", ""))
+        username = user.get("email", user.get("username", ""))
+
+        print(f"\n📊 Processing {user_name}...")
+
+        # Determine output directory
+        output_dir = determine_output_dir(None, user_name, username, period)
+
+        # Determine config file
+        config_file = config_file_path
+
+        # Run workflow
+        assert vertexai_project is not None
+        _run_workflow(
+            script_dir,
+            config_file,
+            vertexai_project,
+            args.location,
+            username,
+            period,
+            output_dir,
+        )
+
+        print(f"✅ Analysis complete for {user_name}")
+
+    print(f"\n✅ Google Docs analysis complete for all users for period {period}")
 
 
 def _run_workflow(
@@ -170,12 +234,20 @@ def main():
         epilog=__doc__,
     )
 
+    # All users option
+    parser.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="Run analysis for all users in config.json (requires -p/--period)",
+    )
+
     # Name/username options
     identity_group = parser.add_mutually_exclusive_group(required=False)
     identity_group.add_argument(
         "-n",
         "--name",
-        help="Person's name in slugified format (e.g., varun-sundar). Full names with spaces require quotes.",
+        help="Person's name in slugified format (e.g., varun-sundar). Full names with spaces require quotes. Can also be provided as first positional argument.",
     )
     identity_group.add_argument("-u", "--username", help="Email or username")
 
@@ -184,12 +256,24 @@ def main():
     period_group.add_argument(
         "-p",
         "--period",
-        help="Period string: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., '2025H2', '2026Q1', '2025')",
+        help="Period string: YYYYH1, YYYYH2, YYYYQ1-Q4, or YYYY (e.g., '2025H2', '2026Q1', '2025'). Can also be provided as second positional argument.",
     )
     period_group.add_argument("-s", "--start", help="Start date (YYYY-MM-DD)")
 
     parser.add_argument(
         "-e", "--end", help="End date (YYYY-MM-DD). Required if --start is provided."
+    )
+
+    # Positional arguments for backward compatibility
+    parser.add_argument(
+        "positional_name",
+        nargs="?",
+        help="User name (positional, same as -n/--name). Ignored if -n/--name is provided.",
+    )
+    parser.add_argument(
+        "positional_period",
+        nargs="?",
+        help="Period string (positional, same as -p/--period). Ignored if -p/--period is provided.",
     )
 
     # Output
@@ -207,11 +291,29 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate required arguments
-    if not args.name and not args.username:
-        parser.error("Must provide either -n/--name or -u/--username")
+    # Handle --all option
+    if args.all:
+        if not args.period and not args.positional_period:
+            parser.error("--all requires -p/--period")
+        if args.name or args.username or args.positional_name:
+            parser.error("Cannot provide -n/--name, -u/--username, or positional name with --all")
+        if args.start or args.end:
+            parser.error("Cannot provide --start/--end with --all")
 
-    if not args.period and not (args.start and args.end):
+        # Run for all users
+        _run_for_all_users(args, parser)
+        return
+
+    # Resolve name and period (prefer flags, fallback to positional)
+    name = args.name or args.positional_name
+    username = args.username
+    period = args.period or args.positional_period
+
+    # Validate required arguments
+    if not name and not username:
+        parser.error("Must provide either -n/--name or -u/--username (or use --all)")
+
+    if not period and not (args.start and args.end):
         parser.error("Must provide either -p/--period or both --start and --end")
 
     if args.start and not args.end:
@@ -224,11 +326,11 @@ def main():
     centralized_config = config_data is not None
 
     # Resolve name and username
-    name, username = _resolve_user_identity(args.name, args.username, config_data, parser)
+    name, username = _resolve_user_identity(name, username, config_data, parser)
 
     # Resolve period and dates
     period_key, start_date, end_date = resolve_time_range(
-        args.period, args.start, args.end, config_data, parser
+        period, args.start, args.end, config_data, parser
     )
 
     # Validate credentials
