@@ -30,6 +30,12 @@
       "email": "varun.sundar@evolutioniq.com",
       "name": "Varun Sundar",
       "level": "L4"
+    },
+    {
+      "username": "wanghq-eiq",
+      "email": "hongqiang.wang@evolutioniq.com",
+      "name": "Hongqiang Wang",
+      "level": "L5"
     }
   ]
 }
